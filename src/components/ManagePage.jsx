@@ -2,13 +2,13 @@ import { useRef, useState } from 'react'
 
 const S = {
   row: { display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' },
-  btn: (variant) => ({
-    background: variant === 'primary' ? 'linear-gradient(135deg,#6366f1,#8b5cf6)'
-      : variant === 'danger' ? 'rgba(239,68,68,0.1)' : '#1e293b',
-    color: variant === 'primary' ? '#fff' : variant === 'danger' ? '#f87171' : '#94a3b8',
-    border: variant === 'danger' ? '1px solid rgba(239,68,68,0.3)' : 'none',
+  btn: (variant, disabled) => ({
+    background: disabled ? '#0f172a' : variant === 'primary' ? 'linear-gradient(135deg,#6366f1,#8b5cf6)'
+      : variant === 'danger' ? 'rgba(239,68,68,0.1)' : variant === 'warn' ? 'rgba(245,158,11,0.1)' : '#1e293b',
+    color: disabled ? '#334155' : variant === 'primary' ? '#fff' : variant === 'danger' ? '#f87171' : variant === 'warn' ? '#fbbf24' : '#94a3b8',
+    border: variant === 'danger' ? '1px solid rgba(239,68,68,0.3)' : variant === 'warn' ? '1px solid rgba(245,158,11,0.3)' : 'none',
     borderRadius: 10, padding: '10px 20px', fontSize: 13,
-    cursor: 'pointer', fontWeight: 600,
+    cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: 600,
   }),
   list: { display: 'flex', flexDirection: 'column', gap: 8 },
   item: {
@@ -22,9 +22,9 @@ const S = {
   },
   toast: {
     position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-    background: '#6366f1', color: '#fff', borderRadius: 10,
+    background: '#1e293b', color: '#e2e8f0', borderRadius: 10,
     padding: '10px 24px', fontSize: 14, fontWeight: 600, zIndex: 9999,
-    pointerEvents: 'none',
+    pointerEvents: 'none', whiteSpace: 'nowrap',
   },
   empty: { color: '#334155', textAlign: 'center', padding: '40px 0', fontSize: 14 },
   stat: {
@@ -33,27 +33,42 @@ const S = {
     display: 'flex', gap: 32, flexWrap: 'wrap',
   },
   statItem: { textAlign: 'center' },
-  statNum: { color: '#818cf8', fontSize: 24, fontWeight: 800 },
+  statNum: (color) => ({ color: color || '#818cf8', fontSize: 24, fontWeight: 800 }),
   statLabel: { color: '#475569', fontSize: 11, marginTop: 2 },
+  dupBanner: {
+    background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)',
+    borderRadius: 10, padding: '12px 16px', marginBottom: 16,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+  },
 }
 
 export default function ManagePage({ cards }) {
-  const { allCards, userCards, builtinCards, deleteCard, exportJSON, importJSON } = cards
+  const { allCards, userCards, builtinCards, deleteCard, exportJSON, importJSON, deduplicateSelf, duplicateCount } = cards
   const fileRef = useRef(null)
   const [toast, setToast] = useState('')
 
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500) }
+  const showToast = (msg, color = '#6366f1') => {
+    setToast({ msg, color })
+    setTimeout(() => setToast(''), 2500)
+  }
 
   const handleImport = async (e) => {
     const f = e.target.files[0]
     if (!f) return
     try {
-      const n = await importJSON(f)
-      showToast(`✓ ${n}개 카드를 가져왔습니다`)
+      const { added, skipped } = await importJSON(f)
+      if (skipped > 0) showToast(`✓ ${added}개 추가 (중복 ${skipped}개 제외)`)
+      else showToast(`✓ ${added}개 추가됨`)
     } catch (err) {
-      showToast(`⚠ ${err.message}`)
+      showToast(`⚠ ${err.message}`, '#ef4444')
     }
     e.target.value = ''
+  }
+
+  const handleDedup = () => {
+    const removed = deduplicateSelf()
+    if (removed > 0) showToast(`✓ 중복 ${removed}개 제거 완료`, '#22c55e')
+    else showToast('중복 카드가 없습니다')
   }
 
   return (
@@ -63,15 +78,27 @@ export default function ManagePage({ cards }) {
 
       {/* 통계 */}
       <div style={S.stat}>
-        <div style={S.statItem}><div style={S.statNum}>{allCards.length}</div><div style={S.statLabel}>전체 카드</div></div>
-        <div style={S.statItem}><div style={S.statNum}>{builtinCards.length}</div><div style={S.statLabel}>기본 카드</div></div>
-        <div style={S.statItem}><div style={S.statNum}>{userCards.length}</div><div style={S.statLabel}>내 카드</div></div>
-        <div style={S.statItem}><div style={S.statNum}>{[...new Set(allCards.map((c) => c.subject))].length}</div><div style={S.statLabel}>과목</div></div>
+        <div style={S.statItem}><div style={S.statNum()}>{allCards.length}</div><div style={S.statLabel}>전체 카드</div></div>
+        <div style={S.statItem}><div style={S.statNum()}>{builtinCards.length}</div><div style={S.statLabel}>기본 카드</div></div>
+        <div style={S.statItem}><div style={S.statNum()}>{userCards.length}</div><div style={S.statLabel}>내 카드</div></div>
+        <div style={S.statItem}><div style={S.statNum('#f59e0b')}>{duplicateCount}</div><div style={S.statLabel}>중복</div></div>
       </div>
+
+      {/* 중복 경고 배너 */}
+      {duplicateCount > 0 && (
+        <div style={S.dupBanner}>
+          <span style={{ color: '#fbbf24', fontSize: 13 }}>
+            ⚠ 중복 카드 {duplicateCount}개가 있습니다
+          </span>
+          <button style={S.btn('warn')} onClick={handleDedup}>
+            중복 제거
+          </button>
+        </div>
+      )}
 
       {/* 액션 */}
       <div style={S.row}>
-        <button style={S.btn('primary')} onClick={exportJSON} disabled={allCards.length === 0}>
+        <button style={S.btn('primary', allCards.length === 0)} onClick={exportJSON} disabled={allCards.length === 0}>
           ↓ JSON 내보내기
         </button>
         <button style={S.btn('default')} onClick={() => fileRef.current?.click()}>
@@ -103,7 +130,11 @@ export default function ManagePage({ cards }) {
         )
       }
 
-      {toast && <div style={S.toast}>{toast}</div>}
+      {toast && (
+        <div style={{ ...S.toast, background: toast.color || '#1e293b' }}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   )
 }

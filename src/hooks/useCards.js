@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { builtinCards } from '../data/mnemonics'
 
 const STORAGE_KEY = 'mnemonic_user_cards'
@@ -16,6 +16,16 @@ function saveUserCards(cards) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cards))
 }
 
+function dedupList(cards) {
+  const seen = new Set()
+  return cards.filter((c) => {
+    const key = `${c.mnemonic}__${c.question}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 export function useCards() {
   const [userCards, setUserCards] = useState(loadUserCards)
 
@@ -29,23 +39,25 @@ export function useCards() {
     })
   }, [])
 
-  const addCards = useCallback((cards) => {
+  // 중복 제외 후 실제 추가된 수 반환
+  const addCards = useCallback((incoming) => {
+    let added = 0
     setUserCards((prev) => {
-      // 기존 카드(빌트인 + 유저) 전체의 중복 키 세트
       const existingKeys = new Set([
         ...builtinCards.map((c) => `${c.mnemonic}__${c.question}`),
         ...prev.map((c) => `${c.mnemonic}__${c.question}`),
       ])
-      const newCards = cards
+      const newCards = incoming
         .filter((c) => !existingKeys.has(`${c.mnemonic}__${c.question}`))
         .map((c) => ({ ...c, id: `user-${Date.now()}-${Math.random().toString(36).slice(2,6)}` }))
+      added = newCards.length
       if (newCards.length === 0) return prev
       const next = [...prev, ...newCards]
       saveUserCards(next)
       return next
     })
-    // 추가된 수 반환을 위해 별도 계산
-  }, [builtinCards])
+    return added
+  }, [])
 
   const deleteCard = useCallback((id) => {
     setUserCards((prev) => {
@@ -53,6 +65,19 @@ export function useCards() {
       saveUserCards(next)
       return next
     })
+  }, [])
+
+  // 기존 카드 중 중복 제거 (첫 번째 유지)
+  const deduplicateSelf = useCallback(() => {
+    let removed = 0
+    setUserCards((prev) => {
+      const deduped = dedupList(prev)
+      removed = prev.length - deduped.length
+      if (removed === 0) return prev
+      saveUserCards(deduped)
+      return deduped
+    })
+    return removed
   }, [])
 
   const exportJSON = useCallback(() => {
@@ -70,8 +95,9 @@ export function useCards() {
         try {
           const data = JSON.parse(e.target.result)
           if (!Array.isArray(data)) throw new Error('올바른 JSON 형식이 아닙니다')
-          addCards(data)
-          resolve(data.length)
+          const added = addCards(data)
+          const skipped = data.length - added
+          resolve({ added, skipped })
         } catch (err) {
           reject(err)
         }
@@ -81,8 +107,11 @@ export function useCards() {
     })
   }, [addCards])
 
+  // 현재 저장된 카드 중 중복 수
+  const duplicateCount = userCards.length - dedupList(userCards).length
+
   const subjects = [...new Set(allCards.map((c) => c.subject))]
   const parts = (subject) => [...new Set(allCards.filter((c) => c.subject === subject).map((c) => c.part))]
 
-  return { allCards, userCards, builtinCards, addCard, addCards, deleteCard, exportJSON, importJSON, subjects, parts }
+  return { allCards, userCards, builtinCards, addCard, addCards, deleteCard, exportJSON, importJSON, deduplicateSelf, duplicateCount, subjects, parts }
 }
