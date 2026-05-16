@@ -12,31 +12,32 @@ const TABS = [
 ]
 
 const S = {
-  wrap: { minHeight: '100vh', background: '#0a0f1e', display: 'flex', flexDirection: 'column' },
+  wrap: { minHeight: '100vh', background: '#0a0f1e', display: 'flex', flexDirection: 'column', width: '100%', overflowX: 'hidden' },
   header: {
-    borderBottom: '1px solid #1e293b', padding: '0 24px',
-    display: 'flex', alignItems: 'center', gap: 32,
+    borderBottom: '1px solid #1e293b', padding: '0 16px',
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     position: 'sticky', top: 0, zIndex: 100,
     background: 'rgba(10,15,30,0.95)', backdropFilter: 'blur(12px)',
+    width: '100%', boxSizing: 'border-box'
   },
-  logo: { fontSize: 18, fontWeight: 800, color: '#e2e8f0', padding: '16px 0', whiteSpace: 'nowrap' },
-  tabs: { display: 'flex', gap: 4 },
+  logo: { fontSize: 16, fontWeight: 800, color: '#e2e8f0', padding: '16px 0', whiteSpace: 'nowrap', flexShrink: 0 },
+  tabs: { display: 'flex', gap: 4, overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
   tab: (active) => ({
-    padding: '16px 16px', border: 'none', background: 'none',
+    padding: '16px 10px', border: 'none', background: 'none',
     color: active ? '#818cf8' : '#475569',
     borderBottom: active ? '2px solid #6366f1' : '2px solid transparent',
     cursor: 'pointer', fontSize: 14, fontWeight: active ? 700 : 400,
-    transition: 'all 0.15s',
+    transition: 'all 0.15s', whiteSpace: 'nowrap'
   }),
-  content: { flex: 1, padding: '32px 24px', maxWidth: 760, width: '100%', margin: '0 auto' },
+  content: { flex: 1, padding: '24px 16px', maxWidth: 760, width: '100%', margin: '0 auto', boxSizing: 'border-box', overflowX: 'hidden' },
   overlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 200, padding: 24,
+    zIndex: 200, padding: 24, boxSizing: 'border-box'
   },
   modal: {
     background: '#0f172a', border: '1px solid #1e293b', borderRadius: 20,
-    padding: 32, width: '100%', maxWidth: 480,
+    padding: 24, width: '100%', maxWidth: 480, boxSizing: 'border-box'
   },
   modalTitle: { color: '#e2e8f0', fontSize: 18, fontWeight: 800, marginBottom: 8 },
   modalSub: { color: '#64748b', fontSize: 13, marginBottom: 24, lineHeight: 1.6 },
@@ -58,7 +59,6 @@ function ShareImportModal({ sharedCards, onImport, onClose }) {
           <span style={{ color: '#818cf8', fontWeight: 700 }}>{sharedCards.length}개</span>의 카드가 공유되었습니다.<br />
           {sharedCards[0] && `"${sharedCards[0].subject}" 등`} — 지금 가져오시겠어요?
         </div>
-        {/* 카드 미리보기 */}
         <div style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {sharedCards.slice(0, 5).map((c, i) => (
             <div key={i} style={{ background: '#1e293b', borderRadius: 8, padding: '8px 12px' }}>
@@ -87,7 +87,6 @@ export default function App() {
   const [sharedCards, setSharedCards] = useState(null)
   const [importToast, setImportToast] = useState('')
 
-  // URL 해시에 공유 데이터 있으면 모달 표시
   useEffect(() => {
     const param = getShareParam()
     if (!param) return
