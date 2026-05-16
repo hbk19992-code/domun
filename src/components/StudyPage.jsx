@@ -371,49 +371,8 @@ export default function StudyPage({ cards }) {
       )}
 
       {/* 카드 */}
-      {card && (
-        <>
-          <div style={S.card(flipped, flipped ? entryOf(card)?.status : null)}
-            onClick={() => setFlipped((f) => !f)}>
-            <div style={S.badge}>{card.subject} · {card.part}</div>
-            <div style={S.question}>{card.question}</div>
-            {flipped ? (
-              <>
-                {(!card.mnemonic && card.answer != null) ? (
-                  <div style={{ ...S.detail, fontSize: 15, color: '#e2e8f0' }}>{card.answer}</div>
-                ) : (
-                  <>
-                    <div style={S.mnemonic}>{card.mnemonic}</div>
-                    <div style={S.detail}>{card.detail}</div>
-                  </>
-                )}
-                {entryOf(card) && (
-                  <div style={S.dueTag}>
-                    다음 복습: {dueLabel(entryOf(card))} · {entryOf(card).count}회 학습
-                  </div>
-                )}
-              </>
-            ) : (
-              <div style={S.hint}>탭하여 정답 확인 →</div>
-            )}
-          </div>
+      {card && <CardWithEdit card={card} flipped={flipped} setFlipped={setFlipped} entryOf={entryOf} handleStatus={handleStatus} updateCard={cards.updateCard} />}
 
-          {/* 암기 상태 버튼 */}
-          <div style={S.statusRow}>
-            {STATUS_KEYS.map((key) => {
-              const st = STATUS[key]
-              const current = entryOf(card)?.status
-              return (
-                <button key={key} style={S.statusBtn(key, current)}
-                  onClick={(e) => { e.stopPropagation(); handleStatus(key) }}>
-                  <span style={{ fontSize: 16 }}>{st.emoji}</span>
-                  <span>{st.label}</span>
-                </button>
-              )
-            })}
-          </div>
-        </>
-      )}
 
       {/* 네비게이션 */}
       {deck.length > 0 && (
@@ -424,5 +383,123 @@ export default function StudyPage({ cards }) {
         </div>
       )}
     </div>
+  )
+}
+
+// ── 카드 + 상태버튼 + 즉시편집 ──────────────────────────────
+function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard }) {
+  const [editOpen, setEditOpen] = useState(false)
+  const [draft, setDraft] = useState(card)
+  const isQA = !card.mnemonic && card.answer != null
+  const canEdit = !!card.id
+
+  // 카드가 바뀌면 편집창 닫기
+  const cardKey = card.id ?? card.question
+  const prevKey = useCallback(() => cardKey, [cardKey])
+
+  const inp = (key, placeholder, multi) => {
+    const style = {
+      width: '100%', boxSizing: 'border-box',
+      background: '#0a0f1e', border: '1px solid #334155', borderRadius: 7,
+      padding: '8px 10px', color: '#e2e8f0', fontSize: 13,
+      fontFamily: 'inherit', outline: 'none', marginBottom: 6,
+      resize: multi ? 'vertical' : 'none',
+    }
+    return multi
+      ? <textarea style={{ ...style, minHeight: 64 }} value={draft[key] || ''}
+          onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} />
+      : <input style={style} value={draft[key] || ''}
+          onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} />
+  }
+
+  const handleSave = () => {
+    updateCard(card.id, draft)
+    setEditOpen(false)
+  }
+
+  return (
+    <>
+      {/* 카드 */}
+      <div style={S.card(flipped, flipped ? entryOf(card)?.status : null)}
+        onClick={() => !editOpen && setFlipped((f) => !f)}>
+        <div style={S.badge}>{card.subject} · {card.part}</div>
+        <div style={S.question}>{card.question}</div>
+        {flipped ? (
+          <>
+            {isQA ? (
+              <div style={{ ...S.detail, fontSize: 15, color: '#e2e8f0' }}>{card.answer}</div>
+            ) : (
+              <>
+                <div style={S.mnemonic}>{card.mnemonic}</div>
+                <div style={S.detail}>{card.detail}</div>
+              </>
+            )}
+            {entryOf(card) && (
+              <div style={S.dueTag}>
+                다음 복습: {dueLabel(entryOf(card))} · {entryOf(card).count}회 학습
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={S.hint}>탭하여 정답 확인 →</div>
+        )}
+      </div>
+
+      {/* 상태 버튼 + 편집 버튼 */}
+      <div style={{ ...S.statusRow, alignItems: 'stretch' }}>
+        {STATUS_KEYS.map((key) => {
+          const st = STATUS[key]
+          const current = entryOf(card)?.status
+          return (
+            <button key={key} style={S.statusBtn(key, current)}
+              onClick={(e) => { e.stopPropagation(); handleStatus(key) }}>
+              <span style={{ fontSize: 16 }}>{st.emoji}</span>
+              <span>{st.label}</span>
+            </button>
+          )
+        })}
+        <button
+          onClick={() => { setDraft({ ...card }); setEditOpen((o) => !o) }}
+          title={canEdit ? '편집' : '기본 카드는 관리 탭에서 편집하세요'}
+          style={{
+            background: editOpen ? 'rgba(99,102,241,0.15)' : 'rgba(15,23,42,0.5)',
+            border: `1.5px solid ${editOpen ? '#6366f1' : '#1e293b'}`,
+            borderRadius: 12, color: editOpen ? '#818cf8' : (canEdit ? '#475569' : '#1e293b'),
+            fontSize: 18, cursor: canEdit ? 'pointer' : 'not-allowed',
+            padding: '0 14px', flexShrink: 0,
+          }}
+        >✎</button>
+      </div>
+
+      {/* 인라인 편집 패널 */}
+      {editOpen && (
+        <div style={{
+          background: 'rgba(15,23,42,0.95)', border: '1px solid #334155',
+          borderRadius: 16, padding: 18, marginBottom: 14,
+        }}>
+          <div style={{ color: '#94a3b8', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>카드 편집</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {inp('subject', '과목')}
+            {inp('part', '단원')}
+          </div>
+          {inp('question', '질문')}
+          {isQA
+            ? inp('answer', '답', true)
+            : <>{inp('mnemonic', '두문자')}{inp('detail', '설명', true)}</>
+          }
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button onClick={handleSave} style={{
+              flex: 1, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+              color: '#fff', border: 'none', borderRadius: 10,
+              padding: '10px', fontSize: 13, cursor: 'pointer', fontWeight: 700,
+            }}>저장</button>
+            <button onClick={() => setEditOpen(false)} style={{
+              background: '#1e293b', color: '#94a3b8', border: 'none',
+              borderRadius: 10, padding: '10px 18px', fontSize: 13, cursor: 'pointer',
+            }}>취소</button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
