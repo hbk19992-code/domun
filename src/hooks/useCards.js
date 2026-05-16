@@ -7,23 +7,54 @@ function loadUserCards() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
+  } catch { return [] }
 }
-
 function saveUserCards(cards) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cards))
 }
 
+// ── 정규화 함수 ──────────────────────────────────────────────
+// 두문자: 구분자(점·중점·공백·괄호 등) 제거 후 한글만
+function normMnemonic(s = '') {
+  return s
+    .replace(/[.\u00B7\u30FB\u318D·・\-\s()\[\]{}\/]/g, '')
+    .replace(/[^\uAC00-\uD7A3a-zA-Z0-9]/g, '')
+    .toLowerCase()
+    .trim()
+}
+// 질문: 조사·어미·물음표·공백 평탄화
+function normQuestion(s = '') {
+  return s
+    .replace(/[?？!！.\s]/g, '')
+    .replace(/(?:은|는|이|가|을|를|의|에|로|으로|란|이란|이란무엇|이무엇)$/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+// 두 카드가 중복인지 판단
+// mnemonic이 같거나(정규화), question이 같으면(정규화) 중복
+function isDuplicate(a, b) {
+  const ma = normMnemonic(a.mnemonic)
+  const mb = normMnemonic(b.mnemonic)
+  const qa = normQuestion(a.question)
+  const qb = normQuestion(b.question)
+  if (ma && mb && ma === mb) return true
+  if (qa && qb && qa === qb) return true
+  return false
+}
+
+// 리스트에서 중복 제거 (앞쪽 우선 유지)
 function dedupList(cards) {
-  const seen = new Set()
-  return cards.filter((c) => {
-    const key = `${c.mnemonic}__${c.question}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+  const kept = []
+  for (const card of cards) {
+    if (!kept.some((k) => isDuplicate(k, card))) kept.push(card)
+  }
+  return kept
+}
+
+// 새 카드 중 기존과 중복인 것 필터
+function filterNew(incoming, existing) {
+  return incoming.filter((c) => !existing.some((e) => isDuplicate(e, c)))
 }
 
 export function useCards() {
@@ -39,16 +70,11 @@ export function useCards() {
     })
   }, [])
 
-  // 중복 제외 후 실제 추가된 수 반환
   const addCards = useCallback((incoming) => {
     let added = 0
     setUserCards((prev) => {
-      const existingKeys = new Set([
-        ...builtinCards.map((c) => `${c.mnemonic}__${c.question}`),
-        ...prev.map((c) => `${c.mnemonic}__${c.question}`),
-      ])
-      const newCards = incoming
-        .filter((c) => !existingKeys.has(`${c.mnemonic}__${c.question}`))
+      const existing = [...builtinCards, ...prev]
+      const newCards = filterNew(incoming, existing)
         .map((c) => ({ ...c, id: `user-${Date.now()}-${Math.random().toString(36).slice(2,6)}` }))
       added = newCards.length
       if (newCards.length === 0) return prev
@@ -67,11 +93,12 @@ export function useCards() {
     })
   }, [])
 
-  // 기존 카드 중 중복 제거 (첫 번째 유지)
   const deduplicateSelf = useCallback(() => {
     let removed = 0
     setUserCards((prev) => {
-      const deduped = dedupList(prev)
+      // 빌트인과도 중복 체크
+      const withoutBuiltin = prev.filter((c) => !builtinCards.some((b) => isDuplicate(b, c)))
+      const deduped = dedupList(withoutBuiltin)
       removed = prev.length - deduped.length
       if (removed === 0) return prev
       saveUserCards(deduped)
@@ -96,19 +123,18 @@ export function useCards() {
           const data = JSON.parse(e.target.result)
           if (!Array.isArray(data)) throw new Error('올바른 JSON 형식이 아닙니다')
           const added = addCards(data)
-          const skipped = data.length - added
-          resolve({ added, skipped })
-        } catch (err) {
-          reject(err)
-        }
+          resolve({ added, skipped: data.length - added })
+        } catch (err) { reject(err) }
       }
       reader.onerror = () => reject(new Error('파일 읽기 실패'))
       reader.readAsText(file)
     })
   }, [addCards])
 
-  // 현재 저장된 카드 중 중복 수
-  const duplicateCount = userCards.length - dedupList(userCards).length
+  const duplicateCount = (() => {
+    const withoutBuiltin = userCards.filter((c) => !builtinCards.some((b) => isDuplicate(b, c)))
+    return userCards.length - dedupList(withoutBuiltin).length
+  })()
 
   const subjects = [...new Set(allCards.map((c) => c.subject))]
   const parts = (subject) => [...new Set(allCards.filter((c) => c.subject === subject).map((c) => c.part))]
