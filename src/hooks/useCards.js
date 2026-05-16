@@ -62,6 +62,41 @@ export function useCards() {
     })
   }, [])
 
+  // 카드 내용 수정
+  const updateCard = useCallback((id, updated) => {
+    setUserCards((prev) => {
+      const next = prev.map((c) => (c.id === id ? { ...c, ...updated } : c))
+      saveUserCards(next)
+      return next
+    })
+  }, [])
+
+  // 과목/단원 단위 일괄 삭제 — 삭제된 수 반환
+  const deleteBy = useCallback(({ subject, part }) => {
+    let removed = 0
+    setUserCards((prev) => {
+      const next = prev.filter((c) => {
+        const matchSubject = !subject || subject === '전체' || c.subject === subject
+        const matchPart = !part || part === '전체' || c.part === part
+        const match = matchSubject && matchPart
+        if (match) removed++
+        return !match
+      })
+      saveUserCards(next)
+      return next
+    })
+    return removed
+  }, [])
+
+  // 일괄 삭제 대상 수 미리보기
+  const countBy = useCallback(({ subject, part }) => {
+    return userCards.filter((c) => {
+      const matchSubject = !subject || subject === '전체' || c.subject === subject
+      const matchPart = !part || part === '전체' || c.part === part
+      return matchSubject && matchPart
+    }).length
+  }, [userCards])
+
   const deduplicateSelf = useCallback(() => {
     let removed = 0
     setUserCards((prev) => {
@@ -108,5 +143,5 @@ export function useCards() {
   const subjects = [...new Set(allCards.map((c) => c.subject))]
   const parts = (subject) => [...new Set(allCards.filter((c) => c.subject === subject).map((c) => c.part))]
 
-  return { allCards, userCards, builtinCards, addCard, addCards, deleteCard, exportJSON, importJSON, deduplicateSelf, duplicateCount, subjects, parts }
+  return { allCards, userCards, builtinCards, addCard, addCards, deleteCard, updateCard, deleteBy, countBy, exportJSON, importJSON, deduplicateSelf, duplicateCount, subjects, parts }
 }

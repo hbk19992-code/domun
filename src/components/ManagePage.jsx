@@ -64,13 +64,23 @@ const S = {
 }
 
 export default function ManagePage({ cards }) {
-  const { allCards, userCards, builtinCards, deleteCard, exportJSON, importJSON, deduplicateSelf, duplicateCount } = cards
+  const { allCards, userCards, builtinCards, deleteCard, updateCard, deleteBy, countBy, exportJSON, importJSON, deduplicateSelf, duplicateCount } = cards
   const fileRef = useRef(null)
   const [toast, setToast] = useState(null)
   const [shareUrl, setShareUrl] = useState('')
   const [shareScope, setShareScope] = useState('all') // all | user
   const [sharing, setSharing] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [delSubject, setDelSubject] = useState('전체')
+  const [delPart, setDelPart] = useState('전체')
+  const [confirmDel, setConfirmDel] = useState(false)
+
+  // 내 카드 기준 과목/단원 목록
+  const userSubjects = [...new Set(userCards.map((c) => c.subject))]
+  const userParts = delSubject === '전체'
+    ? [...new Set(userCards.map((c) => c.part))]
+    : [...new Set(userCards.filter((c) => c.subject === delSubject).map((c) => c.part))]
+  const delCount = countBy({ subject: delSubject, part: delPart })
 
   const showToast = (msg, color = '#6366f1') => {
     setToast({ msg, color })
@@ -94,6 +104,14 @@ export default function ManagePage({ cards }) {
     const removed = deduplicateSelf()
     if (removed > 0) showToast(`✓ 중복 ${removed}개 제거 완료`, '#22c55e')
     else showToast('중복 카드가 없습니다')
+  }
+
+  const handleBulkDelete = () => {
+    if (!confirmDel) { setConfirmDel(true); return }
+    const removed = deleteBy({ subject: delSubject, part: delPart })
+    showToast(removed > 0 ? `✓ ${removed}개 삭제됨` : '삭제할 카드가 없습니다', removed > 0 ? '#ef4444' : '#6366f1')
+    setConfirmDel(false)
+    setDelSubject('전체'); setDelPart('전체')
   }
 
   const handleShare = async () => {
@@ -182,6 +200,52 @@ export default function ManagePage({ cards }) {
         <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
       </div>
 
+      {/* 단원·과목별 일괄 삭제 */}
+      {userCards.length > 0 && (
+        <div style={{
+          background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)',
+          borderRadius: 12, padding: 18, marginBottom: 20,
+        }}>
+          <div style={{ color: '#94a3b8', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>🗑 단원·과목별 일괄 삭제</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              value={delSubject}
+              onChange={(e) => { setDelSubject(e.target.value); setDelPart('전체'); setConfirmDel(false) }}
+              style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '8px 10px', fontSize: 13, cursor: 'pointer' }}
+            >
+              <option value="전체">과목 전체</option>
+              {userSubjects.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select
+              value={delPart}
+              onChange={(e) => { setDelPart(e.target.value); setConfirmDel(false) }}
+              style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '8px 10px', fontSize: 13, cursor: 'pointer' }}
+            >
+              <option value="전체">단원 전체</option>
+              {userParts.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <button
+              style={S.btn('danger', delCount === 0)}
+              disabled={delCount === 0}
+              onClick={handleBulkDelete}
+            >
+              {confirmDel ? `정말 삭제? (${delCount}개)` : `삭제 (${delCount}개)`}
+            </button>
+            {confirmDel && (
+              <button
+                style={{ background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer' }}
+                onClick={() => setConfirmDel(false)}
+              >취소</button>
+            )}
+          </div>
+          <div style={{ color: '#334155', fontSize: 11, marginTop: 8 }}>
+            {delSubject === '전체' && delPart === '전체'
+              ? '과목·단원을 선택하면 해당 범위만 삭제됩니다'
+              : `삭제 대상: ${delSubject === '전체' ? '전 과목' : delSubject}${delPart !== '전체' ? ` · ${delPart}` : ''}`}
+          </div>
+        </div>
+      )}
+
       {/* 내 카드 목록 */}
       <div style={{ color: '#64748b', fontSize: 13, marginBottom: 12 }}>내 카드 ({userCards.length}개)</div>
       {userCards.length === 0
@@ -189,17 +253,12 @@ export default function ManagePage({ cards }) {
         : (
           <div style={S.list}>
             {userCards.map((card) => (
-              <div key={card.id} style={S.item}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}>
-                    <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.subject}</span>
-                    <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.part}</span>
-                  </div>
-                  <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
-                  <div style={{ color: '#818cf8', fontSize: 13, fontWeight: 700 }}>{card.mnemonic}</div>
-                </div>
-                <button style={S.del} onClick={() => deleteCard(card.id)} title="삭제">✕</button>
-              </div>
+              <EditableCard
+                key={card.id}
+                card={card}
+                onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
+                onDelete={() => deleteCard(card.id)}
+              />
             ))}
           </div>
         )
@@ -209,3 +268,66 @@ export default function ManagePage({ cards }) {
     </div>
   )
 }
+
+// 즉시 편집 가능한 카드 아이템
+function EditableCard({ card, onSave, onDelete }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(card)
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box',
+    background: '#0a0f1e', border: '1px solid #334155',
+    borderRadius: 6, padding: '6px 9px', color: '#e2e8f0',
+    fontSize: 13, fontFamily: 'inherit', outline: 'none',
+    marginBottom: 5, resize: 'vertical',
+  }
+
+  if (editing) {
+    return (
+      <div style={{ ...S.item, flexDirection: 'column', alignItems: 'stretch', gap: 0 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input style={inputStyle} value={draft.subject}
+            onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="과목" />
+          <input style={inputStyle} value={draft.part}
+            onChange={(e) => setDraft({ ...draft, part: e.target.value })} placeholder="단원" />
+        </div>
+        <input style={inputStyle} value={draft.question}
+          onChange={(e) => setDraft({ ...draft, question: e.target.value })} placeholder="질문" />
+        <input style={{ ...inputStyle, color: '#818cf8', fontWeight: 700 }} value={draft.mnemonic}
+          onChange={(e) => setDraft({ ...draft, mnemonic: e.target.value })} placeholder="두문자" />
+        <textarea style={{ ...inputStyle, minHeight: 60, fontSize: 12 }} value={draft.detail}
+          onChange={(e) => setDraft({ ...draft, detail: e.target.value })} placeholder="설명" />
+        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+          <button
+            onClick={() => { onSave(draft); setEditing(false) }}
+            style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+          >저장</button>
+          <button
+            onClick={() => { setDraft(card); setEditing(false) }}
+            style={{ background: '#1e293b', color: '#94a3b8', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}
+          >취소</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={S.item}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}>
+          <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.subject}</span>
+          <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.part}</span>
+        </div>
+        <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
+        <div style={{ color: '#818cf8', fontSize: 13, fontWeight: 700 }}>{card.mnemonic}</div>
+      </div>
+      <button
+        style={{ ...S.del, color: '#475569', fontSize: 14 }}
+        onClick={() => { setDraft(card); setEditing(true) }}
+        title="편집"
+      >✎</button>
+      <button style={S.del} onClick={onDelete} title="삭제">✕</button>
+    </div>
+  )
+}
+
