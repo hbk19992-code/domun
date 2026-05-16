@@ -1,6 +1,55 @@
 import { useState, useRef, useCallback } from 'react'
 
-const GEMINI_MODEL = 'gemini-2.5-flash'
+const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
+
+async function callGemini(apiKey, model, systemPrompt, parts, onProgress) {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 65536 },
+      }),
+    }
+  )
+  const data = await res.json()
+  if (!res.ok) {
+    const msg = data.error?.message || ''
+    if (res.status === 401 || res.status === 403) throw new Error('__AUTH__')
+    if (res.status === 503 || msg.toLowerCase().includes('high demand') || msg.toLowerCase().includes('overloaded'))
+      throw new Error('__BUSY__')
+    throw new Error(msg || `API 오류 (${res.status})`)
+  }
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
+}
+
+async function extractWithRetry(apiKey, parts, onProgress) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+  for (let m = 0; m < MODELS.length; m++) {
+    const model = MODELS[m]
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        onProgress(`AI 분석 중... (${model}${attempt > 1 ? ` 재시도 ${attempt}/3` : ''})`)
+        return await callGemini(apiKey, model, SYSTEM_PROMPT, parts, onProgress)
+      } catch (e) {
+        if (e.message === '__AUTH__') throw new Error('API 키가 올바르지 않습니다. 다시 확인해주세요.')
+        if (e.message === '__BUSY__') {
+          if (attempt < 3) {
+            await sleep(attempt * 5000)
+            continue
+          }
+          if (m < MODELS.length - 1) break
+          throw new Error('Gemini 서버가 혼잡합니다. 잠시 후 다시 시도해주세요.')
+        }
+        throw e
+      }
+    }
+  }
+  throw new Error('모든 모델이 응답하지 않습니다. 잠시 후 다시 시도해주세요.')
+}
 
 const SYSTEM_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
 
@@ -177,29 +226,7 @@ export default function ExtractPage({ cards, onImport }) {
 
       setProgress('AI 분석 중... 꼼꼼하게 전체 스캔 중입니다 (30~90초 소요)')
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-            contents: [{ role: 'user', parts }],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 65536,
-            },
-          }),
-        }
-      )
-
-      const data = await res.json()
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) throw new Error('API 키가 올바르지 않습니다. 다시 확인해주세요.')
-        throw new Error(data.error?.message || 'Gemini API 오류')
-      }
-
-      const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '[]')
+      const raw = (await extractWithRetry(apiKey, parts, setProgress))
         .replace(/```json|```/g, '').trim()
 
       // JSON이 잘린 경우 복구: 마지막 완전한 객체까지만 살리기
@@ -233,9 +260,20 @@ export default function ExtractPage({ cards, onImport }) {
   const toggle = (i) => setSelected((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
   const toggleAll = () => selected.size === extracted.length ? setSelected(new Set()) : setSelected(new Set(extracted.map((_, i) => i)))
 
+  const [importMsg, setImportMsg] = useState('')
+
   const doImport = () => {
-    cards.addCards(extracted.filter((_, i) => selected.has(i)))
-    onImport()
+    const toAdd = extracted.filter((_, i) => selected.has(i))
+    const before = cards.allCards.length
+    cards.addCards(toAdd)
+    // addCards는 중복 제외하므로 실제 추가된 수 계산
+    setTimeout(() => {
+      const added = cards.allCards.length - before
+      const skipped = toAdd.length - added
+      if (skipped > 0) setImportMsg(`✓ ${added}개 추가 (중복 ${skipped}개 제외)`)
+      else setImportMsg(`✓ ${added}개 추가됨`)
+      setTimeout(() => { setImportMsg(''); onImport() }, 1500)
+    }, 50)
   }
 
   const reset = () => { setFile(null); setStatus('idle'); setExtracted([]); setSelected(new Set()); setErrorMsg('') }
@@ -323,6 +361,11 @@ export default function ExtractPage({ cards, onImport }) {
             </button>
             <button style={S.actionBtn(false, false)} onClick={reset}>새 파일</button>
           </div>
+          {importMsg && (
+            <div style={{ marginTop: 10, textAlign: 'center', color: '#22c55e', fontSize: 13, fontWeight: 600 }}>
+              {importMsg}
+            </div>
+          )}
         </div>
       )}
     </div>

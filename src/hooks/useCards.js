@@ -31,14 +31,21 @@ export function useCards() {
 
   const addCards = useCallback((cards) => {
     setUserCards((prev) => {
-      const next = [
-        ...prev,
-        ...cards.map((c) => ({ ...c, id: `user-${Date.now()}-${Math.random().toString(36).slice(2,6)}` }))
-      ]
+      // 기존 카드(빌트인 + 유저) 전체의 중복 키 세트
+      const existingKeys = new Set([
+        ...builtinCards.map((c) => `${c.mnemonic}__${c.question}`),
+        ...prev.map((c) => `${c.mnemonic}__${c.question}`),
+      ])
+      const newCards = cards
+        .filter((c) => !existingKeys.has(`${c.mnemonic}__${c.question}`))
+        .map((c) => ({ ...c, id: `user-${Date.now()}-${Math.random().toString(36).slice(2,6)}` }))
+      if (newCards.length === 0) return prev
+      const next = [...prev, ...newCards]
       saveUserCards(next)
       return next
     })
-  }, [])
+    // 추가된 수 반환을 위해 별도 계산
+  }, [builtinCards])
 
   const deleteCard = useCallback((id) => {
     setUserCards((prev) => {
