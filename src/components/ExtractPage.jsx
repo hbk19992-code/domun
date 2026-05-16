@@ -2,19 +2,50 @@ import { useState, useRef, useCallback } from 'react'
 
 const GEMINI_MODEL = 'gemini-2.5-flash'
 
-const SYSTEM_PROMPT = `당신은 법학 시험 준비용 두문자(두문자어) 카드를 추출하는 전문가입니다.
-업로드된 문서에서 두문자 학습 카드를 추출하여 JSON 배열만 반환하세요.
-설명·마크다운·코드블록 없이 순수 JSON 배열만 출력합니다.
+const SYSTEM_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
 
-형식:
-[{"subject":"과목명","part":"파트명","question":"질문","mnemonic":"두문자","detail":"① 항목1 / ② 항목2 ..."}]
+【절대 규칙】 단 하나의 두문자도 놓치지 말 것. 확신이 없어도 추출하고, 나중에 사용자가 판단한다.
 
-규칙:
-- 두문자가 명확히 있는 항목만 추출
-- question은 해당 두문자가 답이 되는 질문 형태로
-- detail은 번호(①②③...)와 함께 각 의미 서술
-- subject/part는 맥락 추론, 불명확하면 "미분류"
-- 중복 제외`
+【두문자 인식 기준 — 아래 패턴 중 하나라도 해당하면 추출】
+1. 점(.) 구분형: "이.가.게.귀.위", "보.필.불.대", "동.매.철"
+2. 괄호 설명형: "준.통.수 [준비완료·통지·수령]"
+3. 한글 약어 나열: "모.사.실", "강.손.해.책", "변.대.공"
+4. 꺽쇠 요건/효과: "<요건>이.가.게.귀.위 <효과>강.손.해.책" → 각각 별도 카드로
+5. 비고 설명형: "[의무위반/상당인과관계/손해범위]" 앞에 두문자가 있으면 추출
+6. 조항 번호와 결합: "392조 강.손.해.책", "451조 동.기"
+7. 단어 축약형: "출.구.정", "항.전", "적.기.해"
+8. 영어·숫자 포함: "파.판.5.도", "소.객.도 안.지"
+9. 한자 포함: "생.원.유", "묘.지.명.철.귀.무.기.침"
+10. 특수 표기: "저+건.동.경", "3아.미안.신변"
+
+【추출 방법】
+- 문서를 처음부터 끝까지 한 줄씩 읽으며 위 패턴 탐색
+- 두문자 발견 시 → 앞뒤 문맥으로 question(이 두문자가 답이 되는 질문)을 생성
+- 같은 주제에 요건/효과가 별도로 있으면 카드 2개로 분리
+- <요건>, <효과>, <판례>, 조항별로 묶인 세트는 각각 개별 카드로
+
+【출력 형식 — 순수 JSON 배열만, 다른 텍스트 절대 없음】
+[
+  {
+    "subject": "과목명 (예: 민법, 형법, 민사소송법, 행정법)",
+    "part": "파트명 (예: 채권총론, 물권법, 총칙)",
+    "question": "이 두문자가 답이 되는 질문 (예: '이행지체의 요건은?')",
+    "mnemonic": "두문자 원문 그대로 (예: '이.가.게.귀.위')",
+    "detail": "① 첫 번째 의미 / ② 두 번째 의미 / ③ 세 번째 의미 ..."
+  }
+]
+
+【detail 작성 규칙】
+- 반드시 ①②③... 번호와 함께
+- 원문에 대괄호 [ ] 안에 설명이 있으면 그것을 활용
+- 원문에 설명이 없으면 문맥에서 추론하여 작성
+- 두문자 각 글자/음절이 무엇을 의미하는지 명확히
+
+【subject/part 추론】
+- 문서의 제목, 챕터, 소제목으로 판단
+- 불명확하면 "미분류"
+
+최종 점검: 출력 전 문서를 다시 훑어 누락된 두문자 없는지 확인하라.`
 
 const S = {
   section: { marginBottom: 24 },
@@ -65,13 +96,13 @@ const S = {
     background: checked ? '#6366f1' : 'transparent',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   }),
-  actionBtn: (primary) => ({
+  actionBtn: (primary, disabled) => ({
     flex: 1,
-    background: primary ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : 'rgba(99,102,241,0.12)',
-    color: primary ? '#fff' : '#818cf8',
-    border: primary ? 'none' : '1px solid #6366f1',
+    background: disabled ? '#1e293b' : primary ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : 'rgba(99,102,241,0.12)',
+    color: disabled ? '#475569' : primary ? '#fff' : '#818cf8',
+    border: disabled ? 'none' : primary ? 'none' : '1px solid #6366f1',
     borderRadius: 12, padding: '13px 20px', fontSize: 14,
-    cursor: 'pointer', fontWeight: 700,
+    cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: 700,
   }),
 }
 
@@ -79,17 +110,17 @@ function KeyInput({ apiKey, onSave }) {
   const [val, setVal] = useState(apiKey)
   return (
     <div style={S.section}>
-      <span style={S.label}>Gemini API 키 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: '#818cf8', fontSize: 11 }}>무료 발급 →</a></span>
+      <span style={S.label}>
+        Gemini API 키{' '}
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: '#818cf8', fontSize: 11 }}>
+          무료 발급 →
+        </a>
+      </span>
       <div style={S.keyRow}>
-        <input
-          type="password" style={S.input}
-          placeholder="AIza..."
+        <input type="password" style={S.input} placeholder="AIza..."
           value={val} onChange={(e) => setVal(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && val.trim() && onSave(val.trim())}
-        />
-        <button style={S.saveBtn(val.trim())} onClick={() => val.trim() && onSave(val.trim())}>
-          저장
-        </button>
+          onKeyDown={(e) => e.key === 'Enter' && val.trim() && onSave(val.trim())} />
+        <button style={S.saveBtn(val.trim())} onClick={() => val.trim() && onSave(val.trim())}>저장</button>
       </div>
       <div style={S.keyNote}>키는 브라우저 세션에만 저장되며 외부로 전송되지 않습니다</div>
     </div>
@@ -100,7 +131,7 @@ export default function ExtractPage({ cards, onImport }) {
   const [apiKey, setApiKey] = useState(() => sessionStorage.getItem('gemini_key') || '')
   const [dragging, setDragging] = useState(false)
   const [file, setFile] = useState(null)
-  const [status, setStatus] = useState('idle') // idle|loading|done|error
+  const [status, setStatus] = useState('idle')
   const [extracted, setExtracted] = useState([])
   const [selected, setSelected] = useState(new Set())
   const [progress, setProgress] = useState('')
@@ -131,16 +162,21 @@ export default function ExtractPage({ cards, onImport }) {
       if (ext === 'txt') {
         setProgress('텍스트 읽는 중...')
         const text = await readText(f)
-        parts = [{ text: `다음 텍스트에서 두문자 카드를 추출해주세요:\n\n${text}` }]
+        parts = [{ text: `다음 텍스트에서 두문자 카드를 빠짐없이 추출해주세요:\n\n${text}` }]
       } else {
         setProgress('파일 읽는 중...')
         const base64 = await readBase64(f)
+        const mimeType = ext === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         parts = [
-          { inline_data: { mime_type: ext === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data: base64 } },
-          { text: '이 문서에서 두문자 카드를 추출해주세요.' },
+          { inline_data: { mime_type: mimeType, data: base64 } },
+          { text: '이 문서의 모든 두문자 카드를 빠짐없이 추출해주세요. 한 개도 놓치지 마세요.' },
         ]
       }
-      setProgress('AI 분석 중... (20~60초 소요)')
+
+      setProgress('AI 분석 중... 꼼꼼하게 전체 스캔 중입니다 (30~90초 소요)')
+
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
         {
@@ -149,18 +185,26 @@ export default function ExtractPage({ cards, onImport }) {
           body: JSON.stringify({
             system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
             contents: [{ role: 'user', parts }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.1,
+              maxOutputTokens: 8192,
+            },
           }),
         }
       )
+
       const data = await res.json()
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) throw new Error('API 키가 올바르지 않습니다')
+        if (res.status === 401 || res.status === 403) throw new Error('API 키가 올바르지 않습니다. 다시 확인해주세요.')
         throw new Error(data.error?.message || 'Gemini API 오류')
       }
+
       const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
       const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim())
-      if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('두문자 카드를 찾지 못했습니다')
+      if (!Array.isArray(parsed) || parsed.length === 0)
+        throw new Error('두문자 카드를 찾지 못했습니다. 두문자가 포함된 문서인지 확인해주세요.')
+
       setExtracted(parsed)
       setSelected(new Set(parsed.map((_, i) => i)))
       setStatus('done')
@@ -174,8 +218,7 @@ export default function ExtractPage({ cards, onImport }) {
   const toggleAll = () => selected.size === extracted.length ? setSelected(new Set()) : setSelected(new Set(extracted.map((_, i) => i)))
 
   const doImport = () => {
-    const toAdd = extracted.filter((_, i) => selected.has(i))
-    cards.addCards(toAdd)
+    cards.addCards(extracted.filter((_, i) => selected.has(i)))
     onImport()
   }
 
@@ -185,7 +228,9 @@ export default function ExtractPage({ cards, onImport }) {
     <div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <h2 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>AI 카드 추출</h2>
-      <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>교재 PDF를 올리면 Gemini AI가 두문자 카드로 만들어드립니다</p>
+      <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>
+        교재 PDF를 올리면 Gemini AI가 두문자를 <b style={{ color: '#94a3b8' }}>하나도 빠짐없이</b> 카드로 만들어드립니다
+      </p>
 
       <KeyInput apiKey={apiKey} onSave={saveKey} />
 
@@ -196,13 +241,11 @@ export default function ExtractPage({ cards, onImport }) {
       )}
 
       {apiKey && status === 'idle' && (
-        <div
-          style={S.dropzone(dragging)}
+        <div style={S.dropzone(dragging)}
           onClick={() => inputRef.current?.click()}
           onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
-        >
+          onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}>
           <input ref={inputRef} type="file" accept=".pdf,.doc,.docx,.txt" style={{ display: 'none' }}
             onChange={(e) => { const f = e.target.files[0]; if (f) handleFile(f) }} />
           <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
@@ -232,13 +275,15 @@ export default function ExtractPage({ cards, onImport }) {
       {status === 'done' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <span style={{ color: '#94a3b8', fontSize: 13 }}>{extracted.length}개 추출 · {selected.size}개 선택</span>
+            <span style={{ color: '#94a3b8', fontSize: 13 }}>
+              <span style={{ color: '#22c55e', fontWeight: 700 }}>{extracted.length}개</span> 추출됨 · {selected.size}개 선택
+            </span>
             <button onClick={toggleAll} style={{ background: 'none', border: '1px solid #334155', borderRadius: 8, padding: '4px 12px', color: '#94a3b8', fontSize: 12, cursor: 'pointer' }}>
               {selected.size === extracted.length ? '전체 해제' : '전체 선택'}
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto', marginBottom: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380, overflowY: 'auto', marginBottom: 16 }}>
             {extracted.map((card, i) => (
               <div key={i} style={S.cardItem(selected.has(i))} onClick={() => toggle(i)}>
                 <div style={S.check(selected.has(i))}>
@@ -257,10 +302,10 @@ export default function ExtractPage({ cards, onImport }) {
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>
-            <button style={S.actionBtn(true)} disabled={selected.size === 0} onClick={doImport}>
+            <button style={S.actionBtn(true, selected.size === 0)} disabled={selected.size === 0} onClick={doImport}>
               내 카드에 추가 ({selected.size}개)
             </button>
-            <button style={S.actionBtn(false)} onClick={reset}>새 파일</button>
+            <button style={S.actionBtn(false, false)} onClick={reset}>새 파일</button>
           </div>
         </div>
       )}
