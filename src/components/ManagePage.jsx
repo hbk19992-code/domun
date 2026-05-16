@@ -250,7 +250,7 @@ function DeleteModal({ target, count, onConfirm, onClose }) {
 }
 
 export default function ManagePage({ cards }) {
-  const { allCards, userCards, builtinCards, deleteCard, updateCard, exportJSON, importJSON, deduplicateSelf, duplicateCount } = cards
+  const { allCards, userCards, builtinCards, deleteCard, updateCard, reorderCard, exportJSON, importJSON, deduplicateSelf, duplicateCount } = cards
   const fileRef = useRef(null)
   const [toast, setToast] = useState(null)
   const [shareUrl, setShareUrl] = useState('')
@@ -367,7 +367,6 @@ export default function ManagePage({ cards }) {
       }
     })
 
-    // 변경된 이름으로 경로 업데이트
     if (type === 'subject' && navPath.length > 0 && safeStr(navPath[0]) === safeStr(oldName)) {
        setNavPath([newName.trim(), navPath[1]].filter(Boolean))
     } else if (type === 'part' && navPath.length > 1 && safeStr(navPath[1]) === safeStr(oldName)) {
@@ -394,7 +393,6 @@ export default function ManagePage({ cards }) {
       });
       showToast(`✓ 단원 내 ${count}장 이동 완료`, '#22c55e');
       
-      // 현재 보고 있던 단원을 이동시켰다면, 이동한 경로로 따라가기
       if (navPath.length === 2 && safeStr(navPath[0]) === safeStr(moveTarget.subject) && safeStr(navPath[1]) === safeStr(moveTarget.part)) {
         setNavPath([newSubj, newPart].filter(Boolean));
       }
@@ -406,18 +404,15 @@ export default function ManagePage({ cards }) {
     if (!delTarget) return;
     const { subject, part } = delTarget;
     
-    // 대상 카드 색출
     const targetCards = userCards.filter(c =>
       safeStr(c.subject) === safeStr(subject) &&
       (part === null || safeStr(c.part) === safeStr(part))
     );
 
-    // 삭제 실행 (deleteBy의 공백 버그를 피하기 위해 ID 기반 안전 삭제)
     targetCards.forEach(c => deleteCard(c.id));
     showToast(`✓ 카드 ${targetCards.length}장 삭제됨`, '#ef4444');
     setDelTarget(null);
 
-    // 현재 보고 있던 폴더가 지워졌다면 상위로 이동
     if (part !== null && safeStr(navPath[1]) === safeStr(part)) {
       setNavPath([currentSubject]);
     } else if (part === null && safeStr(navPath[0]) === safeStr(subject)) {
@@ -425,7 +420,6 @@ export default function ManagePage({ cards }) {
     }
   }
 
-  // 렌더링 헬퍼
   const renderFolder = (type, title, count, onOpen, onRename, onDelete, onMove) => (
     <div key={title} style={S.folderCard}>
       <div onClick={onOpen} style={{ cursor: 'pointer', flex: 1 }}>
@@ -457,7 +451,6 @@ export default function ManagePage({ cards }) {
       <h2 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>카드 관리</h2>
       <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>카드를 내보내거나 가져오고, 링크로 공유할 수 있습니다</p>
 
-      {/* 모달 렌더링 */}
       {renameTarget && (
         <RenameModal 
           oldName={renameTarget.oldName} 
@@ -484,7 +477,6 @@ export default function ManagePage({ cards }) {
         />
       )}
 
-      {/* 통계 및 유틸리티 영역 */}
       <div style={S.stat}>
         <div style={S.statItem}><div style={S.statNum()}>{allCards.length}</div><div style={S.statLabel}>전체 카드</div></div>
         <div style={S.statItem}><div style={S.statNum()}>{builtinCards.length}</div><div style={S.statLabel}>기본 카드</div></div>
@@ -532,11 +524,9 @@ export default function ManagePage({ cards }) {
 
       <hr style={{ border: 0, borderTop: '1px dashed #1e293b', margin: '32px 0 24px' }} />
 
-      {/* 📁 폴더 탐색기 UI */}
       <div>
         <div style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 800, marginBottom: 16 }}>내 저장소</div>
 
-        {/* 상단 경로 (Breadcrumbs) */}
         <div style={{ 
           display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap',
           background: 'rgba(15,23,42,0.6)', padding: '12px 18px', borderRadius: 12, border: '1px solid #1e293b' 
@@ -564,7 +554,6 @@ export default function ManagePage({ cards }) {
           )}
         </div>
 
-        {/* 루트 레벨 (전체 과목 목록) */}
         {navPath.length === 0 && (
           rootFolders.length === 0 ? <div style={S.empty}>저장소에 카드가 없습니다</div> :
           <div style={S.folderGrid}>
@@ -579,7 +568,6 @@ export default function ManagePage({ cards }) {
           </div>
         )}
 
-        {/* 과목 레벨 (단원 목록 및 소속 카드) */}
         {navPath.length === 1 && (
           <div>
             {subjectFolders.length > 0 && (
@@ -596,14 +584,17 @@ export default function ManagePage({ cards }) {
               </div>
             )}
             
-            {/* 단원이 없는 카드들 (과목 직속) */}
             {looseCardsInSubject.length > 0 && (
               <div style={{ marginTop: subjectFolders.length > 0 ? 32 : 0 }}>
                 <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 12, fontWeight: 600 }}>단원 미지정 카드 ({looseCardsInSubject.length}장)</div>
                 <div style={S.list}>
-                  {looseCardsInSubject.map((card) => (
+                  {looseCardsInSubject.map((card, idx) => (
                     <EditableCard
                       key={card.id} card={card}
+                      isFirst={idx === 0} isLast={idx === looseCardsInSubject.length - 1}
+                      onMoveUp={() => reorderCard(card.id, looseCardsInSubject[idx - 1].id)}
+                      onMoveDown={() => reorderCard(card.id, looseCardsInSubject[idx + 1].id)}
+                      onReorder={reorderCard}
                       onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
                       onDelete={() => deleteCard(card.id)}
                       onMove={() => setMoveTarget({ type: 'card', card })}
@@ -620,7 +611,6 @@ export default function ManagePage({ cards }) {
           </div>
         )}
 
-        {/* 단원 레벨 (카드 목록) */}
         {navPath.length === 2 && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -628,9 +618,13 @@ export default function ManagePage({ cards }) {
             </div>
             {partCards.length === 0 ? <div style={S.empty}>카드가 없습니다</div> : 
               <div style={S.list}>
-                {partCards.map((card) => (
+                {partCards.map((card, idx) => (
                   <EditableCard
                     key={card.id} card={card}
+                    isFirst={idx === 0} isLast={idx === partCards.length - 1}
+                    onMoveUp={() => reorderCard(card.id, partCards[idx - 1].id)}
+                    onMoveDown={() => reorderCard(card.id, partCards[idx + 1].id)}
+                    onReorder={reorderCard}
                     onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
                     onDelete={() => deleteCard(card.id)}
                     onMove={() => setMoveTarget({ type: 'card', card })}
@@ -641,17 +635,39 @@ export default function ManagePage({ cards }) {
             }
           </div>
         )}
-
       </div>
+
+      <div style={{ color: '#64748b', fontSize: 13, marginTop: 40, marginBottom: 12 }}>전체 내 카드 ({userCards.length}개)</div>
+      {userCards.length === 0
+        ? <div style={S.empty}>추가한 카드가 없습니다</div>
+        : (
+          <div style={S.list}>
+            {userCards.map((card, idx) => (
+              <EditableCard
+                key={card.id} card={card}
+                isFirst={idx === 0} isLast={idx === userCards.length - 1}
+                onMoveUp={() => reorderCard(card.id, userCards[idx - 1].id)}
+                onMoveDown={() => reorderCard(card.id, userCards[idx + 1].id)}
+                onReorder={reorderCard}
+                onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
+                onDelete={() => deleteCard(card.id)}
+                onMove={() => setMoveTarget({ type: 'card', card })}
+                subjects={cards?.subjects || []} getParts={cards?.parts}
+              />
+            ))}
+          </div>
+        )
+      }
 
       {toast && <div style={{ ...S.toast, background: toast.color }}>{toast.msg}</div>}
     </div>
   )
 }
 
-function EditableCard({ card, onSave, onDelete, onMove, subjects = [], getParts }) {
+function EditableCard({ card, isFirst, isLast, onMoveUp, onMoveDown, onReorder, onSave, onDelete, onMove, subjects = [], getParts }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
+  const [dragOver, setDragOver] = useState(false)
   const isQA = !card.mnemonic && card.answer != null
 
   let safeParts = []
@@ -660,15 +676,14 @@ function EditableCard({ card, onSave, onDelete, onMove, subjects = [], getParts 
       const partsResult = getParts(draft?.subject || '')
       if (Array.isArray(partsResult)) safeParts = partsResult
     }
-  } catch(e) { console.warn(e) }
+  } catch(e) {}
 
   const safeSubjects = Array.isArray(subjects) ? subjects : []
 
   const inputStyle = {
-    width: '100%', boxSizing: 'border-box',
-    background: '#0a0f1e', border: '1px solid #334155',
-    borderRadius: 6, padding: '6px 9px', color: '#e2e8f0',
-    fontSize: 13, fontFamily: 'inherit', outline: 'none',
+    width: '100%', boxSizing: 'border-box', background: '#0a0f1e',
+    border: '1px solid #334155', borderRadius: 6, padding: '6px 9px',
+    color: '#e2e8f0', fontSize: 13, fontFamily: 'inherit', outline: 'none',
     marginBottom: 5, resize: 'vertical',
   }
 
@@ -676,49 +691,59 @@ function EditableCard({ card, onSave, onDelete, onMove, subjects = [], getParts 
     return (
       <div style={{ ...S.item, flexDirection: 'column', alignItems: 'stretch', gap: 0 }}>
         <div style={{ display: 'flex', gap: 6 }}>
-          <DataListInput
-            id={`manage-sub-${card.id || Math.random().toString(36)}`}
-            value={draft.subject}
-            onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
-            placeholder="과목" style={inputStyle} options={safeSubjects}
-          />
-          <DataListInput
-            id={`manage-part-${card.id || Math.random().toString(36)}`}
-            value={draft.part}
-            onChange={(e) => setDraft({ ...draft, part: e.target.value })}
-            placeholder="단원" style={inputStyle} options={safeParts}
-          />
+          <DataListInput id={`manage-sub-${card.id || Math.random().toString(36)}`} value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="과목" style={inputStyle} options={safeSubjects} />
+          <DataListInput id={`manage-part-${card.id || Math.random().toString(36)}`} value={draft.part} onChange={(e) => setDraft({ ...draft, part: e.target.value })} placeholder="단원" style={inputStyle} options={safeParts} />
         </div>
-        <input style={inputStyle} value={draft.question || ''}
-          onChange={(e) => setDraft({ ...draft, question: e.target.value })} placeholder="질문" />
+        <input style={inputStyle} value={draft.question || ''} onChange={(e) => setDraft({ ...draft, question: e.target.value })} placeholder="질문" />
         {isQA ? (
-          <textarea style={{ ...inputStyle, minHeight: 60 }} value={draft.answer || ''}
-            onChange={(e) => setDraft({ ...draft, answer: e.target.value })} placeholder="답" />
+          <textarea style={{ ...inputStyle, minHeight: 60 }} value={draft.answer || ''} onChange={(e) => setDraft({ ...draft, answer: e.target.value })} placeholder="답" />
         ) : (
           <>
-            <input style={{ ...inputStyle, color: '#818cf8', fontWeight: 700 }} value={draft.mnemonic || ''}
-              onChange={(e) => setDraft({ ...draft, mnemonic: e.target.value })} placeholder="두문자" />
-            <textarea style={{ ...inputStyle, minHeight: 60, fontSize: 12 }} value={draft.detail || ''}
-              onChange={(e) => setDraft({ ...draft, detail: e.target.value })} placeholder="설명" />
+            <input style={{ ...inputStyle, color: '#818cf8', fontWeight: 700 }} value={draft.mnemonic || ''} onChange={(e) => setDraft({ ...draft, mnemonic: e.target.value })} placeholder="두문자" />
+            <textarea style={{ ...inputStyle, minHeight: 60, fontSize: 12 }} value={draft.detail || ''} onChange={(e) => setDraft({ ...draft, detail: e.target.value })} placeholder="설명" />
           </>
         )}
         <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-          <button
-            onClick={() => { onSave(draft); setEditing(false) }}
-            style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
-          >저장</button>
-          <button
-            onClick={() => { setDraft(card); setEditing(false) }}
-            style={{ background: '#1e293b', color: '#94a3b8', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}
-          >취소</button>
+          <button onClick={() => { onSave(draft); setEditing(false) }} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>저장</button>
+          <button onClick={() => { setDraft(card); setEditing(false) }} style={{ background: '#1e293b', color: '#94a3b8', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>취소</button>
         </div>
       </div>
     )
   }
 
   return (
-    <div style={S.item}>
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div 
+      style={{
+        ...S.item,
+        border: dragOver ? '1px dashed #38bdf8' : S.item.border,
+        background: dragOver ? 'rgba(56,189,248,0.05)' : S.item.background,
+        transition: 'all 0.2s ease',
+      }}
+      draggable={!editing}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', card.id)
+        setTimeout(() => e.target.style.opacity = '0.3', 0)
+      }}
+      onDragEnd={(e) => {
+        e.target.style.opacity = '1'
+        setDragOver(false)
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        if (!editing) setDragOver(true)
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDragOver(false)
+        if (editing) return
+        const sourceId = e.dataTransfer.getData('text/plain')
+        if (sourceId && sourceId !== card.id) {
+          onReorder(sourceId, card.id)
+        }
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0, cursor: 'grab' }} title="마우스로 끌어서 순서를 변경할 수 있습니다">
         <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}>
           <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.subject || '미분류'}</span>
           <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.part || '미분류'}</span>
@@ -728,10 +753,16 @@ function EditableCard({ card, onSave, onDelete, onMove, subjects = [], getParts 
           ? <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{card.answer}</div>
           : <div style={{ color: '#818cf8', fontSize: 13, fontWeight: 700 }}>{card.mnemonic}</div>}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+        {onMoveUp && onMoveDown && (
+          <div style={{ display: 'flex', gap: 2, marginBottom: 2 }}>
+            <button style={{ ...S.del, padding: '2px 4px', color: isFirst ? '#334155' : '#94a3b8', cursor: isFirst ? 'default' : 'pointer' }} disabled={isFirst} onClick={onMoveUp} title="위로 올리기">▲</button>
+            <button style={{ ...S.del, padding: '2px 4px', color: isLast ? '#334155' : '#94a3b8', cursor: isLast ? 'default' : 'pointer' }} disabled={isLast} onClick={onMoveDown} title="아래로 내리기">▼</button>
+          </div>
+        )}
         <button style={{ ...S.del, color: '#475569', fontSize: 14 }} onClick={() => { setDraft(card); setEditing(true) }} title="편집">✎</button>
         <button style={{ ...S.del, color: '#38bdf8', fontSize: 14 }} onClick={onMove} title="이동">🚀</button>
-        <button style={S.del} onClick={onDelete} title="삭제">✕</button>
+        <button style={{ ...S.del, color: '#f87171', fontSize: 14 }} onClick={onDelete} title="삭제">✕</button>
       </div>
     </div>
   )
