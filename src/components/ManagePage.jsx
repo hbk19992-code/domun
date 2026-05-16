@@ -273,6 +273,7 @@ export default function ManagePage({ cards }) {
 function EditableCard({ card, onSave, onDelete }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
+  const isQA = !card.mnemonic && card.answer != null
 
   const inputStyle = {
     width: '100%', boxSizing: 'border-box',
@@ -293,10 +294,17 @@ function EditableCard({ card, onSave, onDelete }) {
         </div>
         <input style={inputStyle} value={draft.question}
           onChange={(e) => setDraft({ ...draft, question: e.target.value })} placeholder="질문" />
-        <input style={{ ...inputStyle, color: '#818cf8', fontWeight: 700 }} value={draft.mnemonic}
-          onChange={(e) => setDraft({ ...draft, mnemonic: e.target.value })} placeholder="두문자" />
-        <textarea style={{ ...inputStyle, minHeight: 60, fontSize: 12 }} value={draft.detail}
-          onChange={(e) => setDraft({ ...draft, detail: e.target.value })} placeholder="설명" />
+        {isQA ? (
+          <textarea style={{ ...inputStyle, minHeight: 60 }} value={draft.answer || ''}
+            onChange={(e) => setDraft({ ...draft, answer: e.target.value })} placeholder="답" />
+        ) : (
+          <>
+            <input style={{ ...inputStyle, color: '#818cf8', fontWeight: 700 }} value={draft.mnemonic}
+              onChange={(e) => setDraft({ ...draft, mnemonic: e.target.value })} placeholder="두문자" />
+            <textarea style={{ ...inputStyle, minHeight: 60, fontSize: 12 }} value={draft.detail}
+              onChange={(e) => setDraft({ ...draft, detail: e.target.value })} placeholder="설명" />
+          </>
+        )}
         <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
           <button
             onClick={() => { onSave(draft); setEditing(false) }}
@@ -319,7 +327,9 @@ function EditableCard({ card, onSave, onDelete }) {
           <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.part}</span>
         </div>
         <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
-        <div style={{ color: '#818cf8', fontSize: 13, fontWeight: 700 }}>{card.mnemonic}</div>
+        {isQA
+          ? <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{card.answer}</div>
+          : <div style={{ color: '#818cf8', fontSize: 13, fontWeight: 700 }}>{card.mnemonic}</div>}
       </div>
       <button
         style={{ ...S.del, color: '#475569', fontSize: 14 }}

@@ -202,12 +202,19 @@ export default function StudyPage({ cards }) {
     if (!listenMode || !playing || !card) return
     setFlipped(false)
     const isLast = safeIdx >= deck.length - 1
-    const segments = [
-      { text: card.question, pauseAfter: 1400 },
-      { text: '정답', before: () => setFlipped(true), pauseAfter: 400 },
-      { text: ttsMnemonic(card.mnemonic), pauseAfter: 900 },
-      { text: ttsDetail(card.detail), pauseAfter: 1600 },
-    ]
+    const isQA = !card.mnemonic && card.answer != null
+    const segments = isQA
+      ? [
+          { text: card.question, pauseAfter: 1400 },
+          { text: '정답', before: () => setFlipped(true), pauseAfter: 400 },
+          { text: ttsDetail(card.answer), pauseAfter: 1600 },
+        ]
+      : [
+          { text: card.question, pauseAfter: 1400 },
+          { text: '정답', before: () => setFlipped(true), pauseAfter: 400 },
+          { text: ttsMnemonic(card.mnemonic), pauseAfter: 900 },
+          { text: ttsDetail(card.detail), pauseAfter: 1600 },
+        ]
     speak(segments, {
       rate,
       onDone: () => {
@@ -372,8 +379,14 @@ export default function StudyPage({ cards }) {
             <div style={S.question}>{card.question}</div>
             {flipped ? (
               <>
-                <div style={S.mnemonic}>{card.mnemonic}</div>
-                <div style={S.detail}>{card.detail}</div>
+                {(!card.mnemonic && card.answer != null) ? (
+                  <div style={{ ...S.detail, fontSize: 15, color: '#e2e8f0' }}>{card.answer}</div>
+                ) : (
+                  <>
+                    <div style={S.mnemonic}>{card.mnemonic}</div>
+                    <div style={S.detail}>{card.detail}</div>
+                  </>
+                )}
                 {entryOf(card) && (
                   <div style={S.dueTag}>
                     다음 복습: {dueLabel(entryOf(card))} · {entryOf(card).count}회 학습
@@ -381,7 +394,7 @@ export default function StudyPage({ cards }) {
                 )}
               </>
             ) : (
-              <div style={S.hint}>탭하여 두문자 확인 →</div>
+              <div style={S.hint}>탭하여 정답 확인 →</div>
             )}
           </div>
 

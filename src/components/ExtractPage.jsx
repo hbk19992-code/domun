@@ -4,7 +4,7 @@ import { classifyCard } from '../utils/dedup'
 // ── Gemini 호출 ──────────────────────────────────────────────
 const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
 
-const SYSTEM_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
+const MNEMONIC_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
 
 【절대 규칙】 단 하나의 두문자도 놓치지 말 것. 확신이 없어도 추출하고, 나중에 사용자가 판단한다.
 
@@ -30,14 +30,29 @@ const SYSTEM_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를
 
 최종 점검: 출력 전 문서를 다시 훑어 누락된 두문자 없는지 확인하라.`
 
-async function callGemini(apiKey, model, parts) {
+const QA_PROMPT = `당신은 법학 시험 학습 카드를 만드는 전문가입니다.
+업로드된 문서에서 시험에 나올 핵심 내용을 질문-답 형태의 학습 카드로 빠짐없이 추출하세요.
+
+【추출 방법】
+- 문서 전체를 읽으며 시험에 나올 만한 핵심 개념·요건·효과·판례·정의를 찾는다
+- 각 핵심 내용을 질문(question)과 답(answer) 한 쌍으로 만든다
+- 한 카드에는 하나의 개념만 담는다
+- 두문자가 있든 없든 상관없이, 내용 자체를 질문-답으로 만든다
+- answer는 간결하면서도 정확하게, 핵심을 빠뜨리지 말 것
+
+【출력 형식 — 순수 JSON 배열만】
+[{"subject":"과목명","part":"파트명","question":"질문","answer":"답"}]
+
+최종 점검: 출력 전 문서를 다시 훑어 누락된 핵심 내용이 없는지 확인하라.`
+
+async function callGemini(apiKey, model, parts, systemPrompt) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: 'user', parts }],
         generationConfig: { temperature: 0.1, maxOutputTokens: 65536 },
       }),
@@ -54,14 +69,14 @@ async function callGemini(apiKey, model, parts) {
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
 }
 
-async function extractWithRetry(apiKey, parts, setProgress) {
+async function extractWithRetry(apiKey, parts, systemPrompt, setProgress) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
   for (let m = 0; m < MODELS.length; m++) {
     const model = MODELS[m]
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         setProgress(`AI 분석 중... (${model}${attempt > 1 ? ` 재시도 ${attempt}/3` : ''})`)
-        return await callGemini(apiKey, model, parts)
+        return await callGemini(apiKey, model, parts, systemPrompt)
       } catch (e) {
         if (e.message === '__AUTH__') throw new Error('API 키가 올바르지 않습니다.')
         if (e.message === '__BUSY__') {
@@ -96,6 +111,7 @@ function CardItem({ card, type, checked, onToggle, onChange }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
   const meta = TYPE_META[type]
+  const isQA = !card.mnemonic && card.answer != null
 
   const commitEdit = () => {
     onChange(draft)
@@ -159,8 +175,9 @@ function CardItem({ card, type, checked, onToggle, onChange }) {
               {field('part', '파트')}
             </div>
             {field('question', '질문')}
-            {field('mnemonic', '두문자')}
-            {field('detail', '설명', true)}
+            {isQA
+              ? field('answer', '답', true)
+              : <>{field('mnemonic', '두문자')}{field('detail', '설명', true)}</>}
             <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
               <button onClick={commitEdit} style={{
                 background: '#6366f1', color: '#fff', border: 'none',
@@ -175,9 +192,15 @@ function CardItem({ card, type, checked, onToggle, onChange }) {
         ) : (
           <div onClick={onToggle} style={{ cursor: 'pointer' }}>
             <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
-            <div style={{ color: '#818cf8', fontSize: 14, fontWeight: 700, letterSpacing: 1, marginBottom: type === 'upgrade' ? 4 : 0 }}>{card.mnemonic}</div>
-            {type === 'upgrade' && (
-              <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.5 }}>{card.detail}</div>
+            {isQA ? (
+              <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{card.answer}</div>
+            ) : (
+              <>
+                <div style={{ color: '#818cf8', fontSize: 14, fontWeight: 700, letterSpacing: 1, marginBottom: type === 'upgrade' ? 4 : 0 }}>{card.mnemonic}</div>
+                {type === 'upgrade' && (
+                  <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.5 }}>{card.detail}</div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -197,6 +220,7 @@ function CardItem({ card, type, checked, onToggle, onChange }) {
 // ── 메인 컴포넌트 ────────────────────────────────────────────
 export default function ExtractPage({ cards, onImport }) {
   const [apiKey, setApiKey] = useState(() => sessionStorage.getItem('gemini_key') || '')
+  const [extractType, setExtractType] = useState('mnemonic') // 'mnemonic' | 'qa'
   const [inputMode, setInputMode] = useState('file')   // 'file' | 'text'
   const [textInput, setTextInput] = useState('')
   const [dragging, setDragging] = useState(false)
@@ -223,20 +247,28 @@ export default function ExtractPage({ cards, onImport }) {
     setStatus('loading'); setExtracted([]); setSelected(new Set()); setErrorMsg('')
     try {
       setProgress(`${label} 읽는 중...`)
-      const raw = (await extractWithRetry(apiKey, parts, setProgress))
+      const prompt = extractType === 'qa' ? QA_PROMPT : MNEMONIC_PROMPT
+      const raw = (await extractWithRetry(apiKey, parts, prompt, setProgress))
         .replace(/```json|```/g, '').trim()
       const parsed = repairJSON(raw)
       if (!Array.isArray(parsed) || parsed.length === 0)
-        throw new Error('두문자 카드를 찾지 못했습니다.')
+        throw new Error(extractType === 'qa' ? '핵심 내용을 찾지 못했습니다.' : '두문자 카드를 찾지 못했습니다.')
+
+      // QA 카드는 두문자·설명을 비우고 answer를 채움
+      const normalized = parsed.map((c) =>
+        extractType === 'qa'
+          ? { subject: c.subject || '미분류', part: c.part || '미분류',
+              question: c.question || '', mnemonic: '', detail: '', answer: c.answer || '' }
+          : c
+      )
 
       // 기존 카드와 비교해 분류
-      const classified = parsed.map((c) => ({
+      const classified = normalized.map((c) => ({
         ...c,
         _type: classifyCard(c, cards.allCards).type,
       }))
 
       setExtracted(classified)
-      // 기본 선택: 새 카드 + 업그레이드만
       setSelected(new Set(
         classified.map((c, i) => i).filter((i) => classified[i]._type !== 'existing')
       ))
@@ -246,7 +278,7 @@ export default function ExtractPage({ cards, onImport }) {
       setErrorMsg(e.message)
       setStatus('error')
     }
-  }, [apiKey, cards.allCards])
+  }, [apiKey, cards.allCards, extractType])
 
   const handleFile = useCallback(async (f) => {
     if (!apiKey) return
@@ -369,6 +401,28 @@ export default function ExtractPage({ cards, onImport }) {
 
       {apiKey && status === 'idle' && (
         <>
+          {/* 추출 방식 선택 */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 8 }}>추출 방식</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[
+                ['mnemonic', '🔤 두문자 카드', '두문자(약어)를 뽑아 카드로'],
+                ['qa', '💬 질문-답 카드', '핵심 내용을 Q&A로'],
+              ].map(([type, label, desc]) => (
+                <button key={type} onClick={() => setExtractType(type)} style={{
+                  flex: 1, textAlign: 'left',
+                  background: extractType === type ? 'rgba(99,102,241,0.12)' : 'rgba(15,23,42,0.6)',
+                  border: `1.5px solid ${extractType === type ? '#6366f1' : '#1e293b'}`,
+                  borderRadius: 12, padding: '11px 13px', cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}>
+                  <div style={{ color: extractType === type ? '#e2e8f0' : '#94a3b8', fontSize: 13, fontWeight: 700 }}>{label}</div>
+                  <div style={{ color: '#475569', fontSize: 11, marginTop: 2 }}>{desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* 입력 모드 토글 */}
           <div style={{ display: 'flex', gap: 0, marginBottom: 16, background: '#0f172a', borderRadius: 10, padding: 3, width: 'fit-content' }}>
             {[['file', '📄 파일 업로드'], ['text', '✎ 텍스트 붙여넣기']].map(([mode, label]) => (
