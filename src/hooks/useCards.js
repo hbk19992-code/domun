@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { builtinCards } from '../data/mnemonics'
+import { isDuplicate, normMnemonic, normQuestion } from '../utils/dedup'
 
 const STORAGE_KEY = 'mnemonic_user_cards'
 
@@ -13,37 +14,6 @@ function saveUserCards(cards) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cards))
 }
 
-// ── 정규화 함수 ──────────────────────────────────────────────
-// 두문자: 구분자(점·중점·공백·괄호 등) 제거 후 한글만
-function normMnemonic(s = '') {
-  return s
-    .replace(/[.\u00B7\u30FB\u318D·・\-\s()\[\]{}\/]/g, '')
-    .replace(/[^\uAC00-\uD7A3a-zA-Z0-9]/g, '')
-    .toLowerCase()
-    .trim()
-}
-// 질문: 조사·어미·물음표·공백 평탄화
-function normQuestion(s = '') {
-  return s
-    .replace(/[?？!！.\s]/g, '')
-    .replace(/(?:은|는|이|가|을|를|의|에|로|으로|란|이란|이란무엇|이무엇)$/g, '')
-    .toLowerCase()
-    .trim()
-}
-
-// 두 카드가 중복인지 판단
-// mnemonic이 같거나(정규화), question이 같으면(정규화) 중복
-function isDuplicate(a, b) {
-  const ma = normMnemonic(a.mnemonic)
-  const mb = normMnemonic(b.mnemonic)
-  const qa = normQuestion(a.question)
-  const qb = normQuestion(b.question)
-  if (ma && mb && ma === mb) return true
-  if (qa && qb && qa === qb) return true
-  return false
-}
-
-// 리스트에서 중복 제거 (앞쪽 우선 유지)
 function dedupList(cards) {
   const kept = []
   for (const card of cards) {
@@ -52,7 +22,6 @@ function dedupList(cards) {
   return kept
 }
 
-// 새 카드 중 기존과 중복인 것 필터
 function filterNew(incoming, existing) {
   return incoming.filter((c) => !existing.some((e) => isDuplicate(e, c)))
 }
