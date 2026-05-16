@@ -71,6 +71,21 @@ export function useCards() {
     })
   }, [])
 
+  // 카드 순서 변경 (드래그 앤 드롭 및 위/아래 버튼용)
+  const reorderCard = useCallback((sourceId, targetId) => {
+    setUserCards((prev) => {
+      const srcIdx = prev.findIndex(c => c.id === sourceId)
+      const tgtIdx = prev.findIndex(c => c.id === targetId)
+      if (srcIdx < 0 || tgtIdx < 0 || srcIdx === tgtIdx) return prev
+
+      const next = [...prev]
+      const [moved] = next.splice(srcIdx, 1)
+      next.splice(tgtIdx, 0, moved)
+      saveUserCards(next)
+      return next
+    })
+  }, [])
+
   // 과목/단원 단위 일괄 삭제 — 삭제된 수 반환
   const deleteBy = useCallback(({ subject, part }) => {
     let removed = 0
@@ -143,5 +158,5 @@ export function useCards() {
   const subjects = [...new Set(allCards.map((c) => c.subject))]
   const parts = (subject) => [...new Set(allCards.filter((c) => c.subject === subject).map((c) => c.part))]
 
-  return { allCards, userCards, builtinCards, addCard, addCards, deleteCard, updateCard, deleteBy, countBy, exportJSON, importJSON, deduplicateSelf, duplicateCount, subjects, parts }
+  return { allCards, userCards, builtinCards, addCard, addCards, deleteCard, updateCard, reorderCard, deleteBy, countBy, exportJSON, importJSON, deduplicateSelf, duplicateCount, subjects, parts }
 }
