@@ -88,10 +88,10 @@ function RenameModal({ oldName, type, onSave, onClose, isSubject }) {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: 20
     }} onClick={onClose}>
       <div style={{
-        background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: 24, width: 320,
+        background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: 24, width: '100%', maxWidth: 340,
       }} onClick={e => e.stopPropagation()}>
         <div style={{ color: '#e2e8f0', fontSize: 16, fontWeight: 700, marginBottom: 16 }}>
           {isSubject ? '과목명 일괄 변경' : '단원명 일괄 변경'}
@@ -103,8 +103,8 @@ function RenameModal({ oldName, type, onSave, onClose, isSubject }) {
           autoFocus
           style={{
             width: '100%', boxSizing: 'border-box', background: '#0a0f1e',
-            border: '1px solid #6366f1', borderRadius: 8, padding: '10px 12px',
-            color: '#e2e8f0', fontSize: 14, outline: 'none', marginBottom: 16
+            border: '1px solid #6366f1', borderRadius: 8, padding: '12px 14px',
+            color: '#e2e8f0', fontSize: 14, outline: 'none', marginBottom: 20
           }}
           value={newName} onChange={e => setNewName(e.target.value)}
           placeholder="새로운 이름 입력"
@@ -135,7 +135,7 @@ export default function ManagePage({ cards }) {
   const [confirmDel, setConfirmDel] = useState(false)
 
   // 이름 일괄 변경용 상태
-  const [renameTarget, setRenameTarget] = useState(null) // { type: 'subject' | 'part', oldName: string, subjectContext?: string }
+  const [renameTarget, setRenameTarget] = useState(null)
   const [renameSubjFilter, setRenameSubjFilter] = useState('전체')
 
   const userSubjects = useMemo(() => [...new Set(userCards.map((c) => c.subject))], [userCards])
@@ -193,14 +193,12 @@ export default function ManagePage({ cards }) {
         updates.subject = newName.trim()
         shouldUpdate = true
       } else if (type === 'part' && card.part === oldName) {
-        // 과목 필터가 적용되어 있다면 해당 과목의 단원만 수정
         if (subjectContext && subjectContext !== '전체') {
             if (card.subject === subjectContext) {
                  updates.part = newName.trim()
                  shouldUpdate = true
             }
         } else {
-             // 과목 무관하게 단원명 수정
              updates.part = newName.trim()
              shouldUpdate = true
         }
@@ -308,48 +306,57 @@ export default function ManagePage({ cards }) {
       </div>
 
       {userCards.length > 0 && (
-        <div style={{
-          background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.2)',
-          borderRadius: 12, padding: 18, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 16
-        }}>
-          <div>
-              <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>✏ 과목·단원명 일괄 변경</div>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: 'rgba(15,23,42,0.5)', padding: '6px 12px', borderRadius: 8 }}>
-                    <span style={{color: '#94a3b8', fontSize: 12}}>과목</span>
-                    {userSubjects.map(s => (
-                        <button key={s} onClick={() => setRenameTarget({ type: 'subject', oldName: s })} 
-                            style={{ background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
-                            {s} ✎
-                        </button>
-                    ))}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: 'rgba(15,23,42,0.5)', padding: '6px 12px', borderRadius: 8 }}>
-                      <span style={{color: '#94a3b8', fontSize: 12}}>단원 필터:</span>
-                      <select value={renameSubjFilter} onChange={(e) => setRenameSubjFilter(e.target.value)}
-                          style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', padding: '4px 8px', fontSize: 12, outline: 'none' }}>
-                          <option value="전체">전체 과목</option>
-                          {userSubjects.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                      <div style={{ width: 1, height: 16, background: '#334155', margin: '0 4px' }} />
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {renamePartsList.map(p => (
-                              <button key={p} onClick={() => setRenameTarget({ type: 'part', oldName: p, subjectContext: renameSubjFilter })} 
-                                  style={{ background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
-                                  {p} ✎
-                              </button>
-                          ))}
-                      </div>
-                  </div>
-              </div>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
           
-          <hr style={{ border: 0, borderTop: '1px solid rgba(255,255,255,0.05)', margin: '0 4px' }} />
+          {/* 일괄 변경 영역 (깔끔하게 정돈됨) */}
+          <div style={{
+            background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.2)',
+            borderRadius: 14, padding: '20px 16px'
+          }}>
+            <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 700, marginBottom: 18 }}>✏ 과목·단원명 일괄 수정</div>
+            
+            {/* 과목 구역 */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 10 }}>📚 과목</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {userSubjects.map(s => (
+                  <button key={s} onClick={() => setRenameTarget({ type: 'subject', oldName: s })} 
+                    style={{ background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '7px 12px', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {s} <span style={{ color: '#818cf8', fontSize: 14 }}>✎</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <div>
-            <div style={{ color: '#ef4444', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>🗑 과목·단원별 일괄 삭제</div>
+            {/* 단원 구역 (스크롤 컨테이너 적용) */}
+            <div style={{ background: 'rgba(15,23,42,0.4)', borderRadius: 12, padding: 14, border: '1px solid #1e293b' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ color: '#94a3b8', fontSize: 12 }}>📑 단원</div>
+                <select value={renameSubjFilter} onChange={(e) => setRenameSubjFilter(e.target.value)}
+                  style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '6px 10px', fontSize: 12, outline: 'none' }}>
+                  <option value="전체">전체 과목 보기</option>
+                  {userSubjects.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', maxHeight: 180, overflowY: 'auto', paddingRight: 4 }}>
+                {renamePartsList.length === 0 && <div style={{ color: '#475569', fontSize: 12, padding: '8px 0' }}>해당 단원이 없습니다.</div>}
+                {renamePartsList.map(p => (
+                  <button key={p} onClick={() => setRenameTarget({ type: 'part', oldName: p, subjectContext: renameSubjFilter })} 
+                    style={{ background: '#0f172a', border: '1px solid #334155', color: '#cbd5e1', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {p} <span style={{ color: '#6366f1', fontSize: 13 }}>✎</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 일괄 삭제 영역 */}
+          <div style={{
+            background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)',
+            borderRadius: 14, padding: '20px 16px'
+          }}>
+            <div style={{ color: '#ef4444', fontSize: 15, fontWeight: 700, marginBottom: 14 }}>🗑 단원·과목별 일괄 삭제</div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <select
                 value={delSubject}
@@ -381,12 +388,13 @@ export default function ManagePage({ cards }) {
                 >취소</button>
               )}
             </div>
-            <div style={{ color: '#334155', fontSize: 11, marginTop: 8 }}>
+            <div style={{ color: '#334155', fontSize: 11, marginTop: 10 }}>
               {delSubject === '전체' && delPart === '전체'
                 ? '과목·단원을 선택하면 해당 범위만 삭제됩니다'
                 : `삭제 대상: ${delSubject === '전체' ? '전 과목' : delSubject}${delPart !== '전체' ? ` · ${delPart}` : ''}`}
             </div>
           </div>
+
         </div>
       )}
 
