@@ -258,6 +258,8 @@ export default function ManagePage({ cards }) {
                 card={card}
                 onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
                 onDelete={() => deleteCard(card.id)}
+                subjects={cards.subjects}
+                getParts={cards.parts}
               />
             ))}
           </div>
@@ -270,7 +272,7 @@ export default function ManagePage({ cards }) {
 }
 
 // 즉시 편집 가능한 카드 아이템
-function EditableCard({ card, onSave, onDelete }) {
+function EditableCard({ card, onSave, onDelete, subjects, getParts }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
   const isQA = !card.mnemonic && card.answer != null
@@ -287,10 +289,16 @@ function EditableCard({ card, onSave, onDelete }) {
     return (
       <div style={{ ...S.item, flexDirection: 'column', alignItems: 'stretch', gap: 0 }}>
         <div style={{ display: 'flex', gap: 6 }}>
-          <input style={inputStyle} value={draft.subject}
-            onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="과목" />
-          <input style={inputStyle} value={draft.part}
-            onChange={(e) => setDraft({ ...draft, part: e.target.value })} placeholder="단원" />
+          <div style={{ flex: 1 }}>
+            <input style={inputStyle} value={draft.subject} list={`manage-sub-${card.id}`}
+              onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="과목" />
+            <datalist id={`manage-sub-${card.id}`}>{subjects?.map(s => <option key={s} value={s} />)}</datalist>
+          </div>
+          <div style={{ flex: 1 }}>
+            <input style={inputStyle} value={draft.part} list={`manage-part-${card.id}`}
+              onChange={(e) => setDraft({ ...draft, part: e.target.value })} placeholder="단원" />
+            <datalist id={`manage-part-${card.id}`}>{getParts?.(draft.subject || '').map(p => <option key={p} value={p} />)}</datalist>
+          </div>
         </div>
         <input style={inputStyle} value={draft.question}
           onChange={(e) => setDraft({ ...draft, question: e.target.value })} placeholder="질문" />
@@ -340,4 +348,3 @@ function EditableCard({ card, onSave, onDelete }) {
     </div>
   )
 }
-

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import { classifyCard } from '../utils/dedup'
 
 // ── Gemini 호출 ──────────────────────────────────────────────
@@ -107,7 +107,7 @@ const TYPE_META = {
 }
 
 // ── 인라인 편집 가능한 카드 아이템 ───────────────────────────
-function CardItem({ card, type, checked, onToggle, onChange }) {
+function CardItem({ card, type, checked, onToggle, onChange, subjects, getParts }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
   const meta = TYPE_META[type]
@@ -127,6 +127,22 @@ function CardItem({ card, type, checked, onToggle, onChange }) {
       fontWeight: key === 'mnemonic' ? 700 : 400,
       fontFamily: 'inherit', outline: 'none', resize: 'vertical',
       marginBottom: 4,
+    }
+    if (!multiline && (key === 'subject' || key === 'part')) {
+      const listId = key === 'subject' ? `extract-sub-${card.question}` : `extract-part-${draft.subject}-${card.question}`
+      return (
+        <div style={{ flex: 1, width: '100%' }}>
+          <input style={style} value={draft[key] || ''}
+            onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+            placeholder={placeholder} list={listId} />
+          {key === 'subject' && (
+            <datalist id={listId}>{subjects?.map(s => <option key={s} value={s} />)}</datalist>
+          )}
+          {key === 'part' && (
+            <datalist id={listId}>{getParts?.(draft.subject || '').map(p => <option key={p} value={p} />)}</datalist>
+          )}
+        </div>
+      )
     }
     return multiline
       ? <textarea style={{ ...style, minHeight: 56 }} value={draft[key]}
@@ -230,6 +246,17 @@ export default function ExtractPage({ cards, onImport }) {
   const [selected, setSelected] = useState(new Set())
   const [filterTab, setFilterTab] = useState('new')    // 'all'|'new'|'upgrade'|'existing'
   const [progress, setProgress] = useState('')
+
+  const allSubjects = useMemo(() => {
+    return [...new Set([...cards.subjects, ...extracted.map(c => c.subject)])]
+  }, [cards.subjects, extracted])
+
+  const getPartsForSubject = useCallback((subj) => {
+    return [...new Set([
+      ...cards.parts(subj),
+      ...extracted.filter(c => c.subject === subj).map(c => c.part)
+    ])]
+  }, [cards, extracted])
   const [errorMsg, setErrorMsg] = useState('')
   const [importMsg, setImportMsg] = useState('')
   const inputRef = useRef(null)
@@ -539,6 +566,8 @@ export default function ExtractPage({ cards, onImport }) {
                   checked={selected.has(i)}
                   onToggle={() => toggle(i)}
                   onChange={(updated) => updateCard(i, updated)}
+                  subjects={allSubjects}
+                  getParts={getPartsForSubject}
                 />
               ))
             }

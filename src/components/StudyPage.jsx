@@ -371,7 +371,7 @@ export default function StudyPage({ cards }) {
       )}
 
       {/* 카드 */}
-      {card && <CardWithEdit card={card} flipped={flipped} setFlipped={setFlipped} entryOf={entryOf} handleStatus={handleStatus} updateCard={cards.updateCard} />}
+      {card && <CardWithEdit card={card} flipped={flipped} setFlipped={setFlipped} entryOf={entryOf} handleStatus={handleStatus} updateCard={cards.updateCard} subjects={cards.subjects} getParts={cards.parts} />}
 
 
       {/* 네비게이션 */}
@@ -387,7 +387,7 @@ export default function StudyPage({ cards }) {
 }
 
 // ── 카드 + 상태버튼 + 즉시편집 ──────────────────────────────
-function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard }) {
+function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard, subjects, getParts }) {
   const [editOpen, setEditOpen] = useState(false)
   const [draft, setDraft] = useState(card)
   const isQA = !card.mnemonic && card.answer != null
@@ -405,16 +405,26 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
       fontFamily: 'inherit', outline: 'none', marginBottom: 6,
       resize: multi ? 'vertical' : 'none',
     }
+    if (!multi && (key === 'subject' || key === 'part')) {
+      const listId = key === 'subject' ? `study-sub-${cardKey}` : `study-part-${draft.subject}-${cardKey}`
+      return (
+        <div style={{ flex: 1, width: '100%' }}>
+          <input style={style} value={draft[key] || ''}
+            onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} list={listId} />
+          {key === 'subject' && (
+            <datalist id={listId}>{subjects?.map(s => <option key={s} value={s} />)}</datalist>
+          )}
+          {key === 'part' && (
+            <datalist id={listId}>{getParts?.(draft.subject || '').map(p => <option key={p} value={p} />)}</datalist>
+          )}
+        </div>
+      )
+    }
     return multi
       ? <textarea style={{ ...style, minHeight: 64 }} value={draft[key] || ''}
           onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} />
       : <input style={style} value={draft[key] || ''}
           onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} />
-  }
-
-  const handleSave = () => {
-    updateCard(card.id, draft)
-    setEditOpen(false)
   }
 
   return (
