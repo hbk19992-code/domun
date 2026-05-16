@@ -1,12 +1,17 @@
 import { useRef, useState } from 'react'
+import { encodeCards, buildShareUrl } from '../utils/share'
 
 const S = {
   row: { display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' },
   btn: (variant, disabled) => ({
     background: disabled ? '#0f172a' : variant === 'primary' ? 'linear-gradient(135deg,#6366f1,#8b5cf6)'
-      : variant === 'danger' ? 'rgba(239,68,68,0.1)' : variant === 'warn' ? 'rgba(245,158,11,0.1)' : '#1e293b',
-    color: disabled ? '#334155' : variant === 'primary' ? '#fff' : variant === 'danger' ? '#f87171' : variant === 'warn' ? '#fbbf24' : '#94a3b8',
-    border: variant === 'danger' ? '1px solid rgba(239,68,68,0.3)' : variant === 'warn' ? '1px solid rgba(245,158,11,0.3)' : 'none',
+      : variant === 'danger' ? 'rgba(239,68,68,0.1)' : variant === 'warn' ? 'rgba(245,158,11,0.1)'
+      : variant === 'share' ? 'rgba(99,102,241,0.15)' : '#1e293b',
+    color: disabled ? '#334155' : variant === 'primary' ? '#fff' : variant === 'danger' ? '#f87171'
+      : variant === 'warn' ? '#fbbf24' : variant === 'share' ? '#818cf8' : '#94a3b8',
+    border: variant === 'danger' ? '1px solid rgba(239,68,68,0.3)'
+      : variant === 'warn' ? '1px solid rgba(245,158,11,0.3)'
+      : variant === 'share' ? '1px solid #6366f1' : 'none',
     borderRadius: 10, padding: '10px 20px', fontSize: 13,
     cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: 600,
   }),
@@ -22,9 +27,8 @@ const S = {
   },
   toast: {
     position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-    background: '#1e293b', color: '#e2e8f0', borderRadius: 10,
-    padding: '10px 24px', fontSize: 14, fontWeight: 600, zIndex: 9999,
-    pointerEvents: 'none', whiteSpace: 'nowrap',
+    borderRadius: 10, padding: '10px 24px', fontSize: 14, fontWeight: 600,
+    zIndex: 9999, pointerEvents: 'none', whiteSpace: 'nowrap', color: '#fff',
   },
   empty: { color: '#334155', textAlign: 'center', padding: '40px 0', fontSize: 14 },
   stat: {
@@ -40,16 +44,37 @@ const S = {
     borderRadius: 10, padding: '12px 16px', marginBottom: 16,
     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
   },
+  shareBox: {
+    background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)',
+    borderRadius: 12, padding: 20, marginBottom: 20,
+  },
+  linkRow: { display: 'flex', gap: 8, marginTop: 12 },
+  linkInput: {
+    flex: 1, background: '#0f172a', border: '1px solid #334155',
+    borderRadius: 8, padding: '9px 12px', color: '#818cf8',
+    fontSize: 12, fontFamily: 'monospace', outline: 'none',
+  },
+  copyBtn: (copied) => ({
+    background: copied ? 'rgba(34,197,94,0.15)' : '#1e293b',
+    border: `1px solid ${copied ? '#22c55e' : '#334155'}`,
+    color: copied ? '#22c55e' : '#94a3b8',
+    borderRadius: 8, padding: '9px 16px', fontSize: 13,
+    cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
+  }),
 }
 
 export default function ManagePage({ cards }) {
   const { allCards, userCards, builtinCards, deleteCard, exportJSON, importJSON, deduplicateSelf, duplicateCount } = cards
   const fileRef = useRef(null)
-  const [toast, setToast] = useState('')
+  const [toast, setToast] = useState(null)
+  const [shareUrl, setShareUrl] = useState('')
+  const [shareScope, setShareScope] = useState('all') // all | user
+  const [sharing, setSharing] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const showToast = (msg, color = '#6366f1') => {
     setToast({ msg, color })
-    setTimeout(() => setToast(''), 2500)
+    setTimeout(() => setToast(null), 2500)
   }
 
   const handleImport = async (e) => {
@@ -71,10 +96,39 @@ export default function ManagePage({ cards }) {
     else showToast('중복 카드가 없습니다')
   }
 
+  const handleShare = async () => {
+    const target = shareScope === 'user' ? userCards : allCards
+    if (target.length === 0) return showToast('공유할 카드가 없습니다', '#ef4444')
+    setSharing(true)
+    try {
+      const encoded = await encodeCards(target)
+      const url = buildShareUrl(encoded)
+      if (url.length > 15000) {
+        showToast(`카드가 너무 많습니다. "내 카드만"으로 시도해보세요.`, '#f59e0b')
+        setSharing(false)
+        return
+      }
+      setShareUrl(url)
+    } catch {
+      showToast('링크 생성 실패', '#ef4444')
+    }
+    setSharing(false)
+  }
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      showToast('복사 실패 — 직접 선택해서 복사하세요')
+    }
+  }
+
   return (
     <div>
       <h2 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>카드 관리</h2>
-      <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>JSON으로 내보내거나 가져올 수 있습니다</p>
+      <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>카드를 내보내거나 가져오고, 링크로 공유할 수 있습니다</p>
 
       {/* 통계 */}
       <div style={S.stat}>
@@ -84,26 +138,47 @@ export default function ManagePage({ cards }) {
         <div style={S.statItem}><div style={S.statNum('#f59e0b')}>{duplicateCount}</div><div style={S.statLabel}>중복</div></div>
       </div>
 
-      {/* 중복 경고 배너 */}
+      {/* 중복 배너 */}
       {duplicateCount > 0 && (
         <div style={S.dupBanner}>
-          <span style={{ color: '#fbbf24', fontSize: 13 }}>
-            ⚠ 중복 카드 {duplicateCount}개가 있습니다
-          </span>
-          <button style={S.btn('warn')} onClick={handleDedup}>
-            중복 제거
-          </button>
+          <span style={{ color: '#fbbf24', fontSize: 13 }}>⚠ 중복 카드 {duplicateCount}개</span>
+          <button style={S.btn('warn')} onClick={handleDedup}>중복 제거</button>
         </div>
       )}
 
-      {/* 액션 */}
+      {/* 공유 링크 */}
+      <div style={S.shareBox}>
+        <div style={{ color: '#94a3b8', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>🔗 공유 링크 만들기</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select
+            value={shareScope}
+            onChange={(e) => { setShareScope(e.target.value); setShareUrl('') }}
+            style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '8px 10px', fontSize: 13, cursor: 'pointer' }}
+          >
+            <option value="all">전체 카드 ({allCards.length}개)</option>
+            <option value="user">내 카드만 ({userCards.length}개)</option>
+          </select>
+          <button style={S.btn('share', sharing || allCards.length === 0)} onClick={handleShare} disabled={sharing || allCards.length === 0}>
+            {sharing ? '생성 중...' : '링크 생성'}
+          </button>
+        </div>
+        {shareUrl && (
+          <div style={S.linkRow}>
+            <input style={S.linkInput} value={shareUrl} readOnly onClick={(e) => e.target.select()} />
+            <button style={S.copyBtn(copied)} onClick={handleCopy}>
+              {copied ? '✓ 복사됨' : '복사'}
+            </button>
+          </div>
+        )}
+        <div style={{ color: '#334155', fontSize: 11, marginTop: 8 }}>
+          링크를 받은 사람이 열면 카드 가져오기 화면이 자동으로 뜹니다
+        </div>
+      </div>
+
+      {/* JSON 액션 */}
       <div style={S.row}>
-        <button style={S.btn('primary', allCards.length === 0)} onClick={exportJSON} disabled={allCards.length === 0}>
-          ↓ JSON 내보내기
-        </button>
-        <button style={S.btn('default')} onClick={() => fileRef.current?.click()}>
-          ↑ JSON 가져오기
-        </button>
+        <button style={S.btn('primary', allCards.length === 0)} onClick={exportJSON} disabled={allCards.length === 0}>↓ JSON 내보내기</button>
+        <button style={S.btn('default')} onClick={() => fileRef.current?.click()}>↑ JSON 가져오기</button>
         <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
       </div>
 
@@ -130,11 +205,7 @@ export default function ManagePage({ cards }) {
         )
       }
 
-      {toast && (
-        <div style={{ ...S.toast, background: toast.color || '#1e293b' }}>
-          {toast.msg}
-        </div>
-      )}
+      {toast && <div style={{ ...S.toast, background: toast.color }}>{toast.msg}</div>}
     </div>
   )
 }
