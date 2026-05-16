@@ -1,6 +1,20 @@
 import { useState, useRef, useCallback, useMemo } from 'react'
-import { classifyCard } from '../utils/dedup'
+import { isDuplicate, normQuestion } from '../utils/dedup'
 
+// utils/dedup에 누락되었던 classifyCard 함수를 여기서 직접 안전하게 구현합니다.
+function classifyCard(card, allCards) {
+  if (!allCards || !Array.isArray(allCards)) return { type: 'new' };
+  const isDup = allCards.some(c => isDuplicate(c, card));
+  if (isDup) return { type: 'existing' };
+  
+  const qNorm = normQuestion(card.question);
+  if (qNorm && allCards.some(c => normQuestion(c.question) === qNorm)) {
+    return { type: 'upgrade' };
+  }
+  return { type: 'new' };
+}
+
+// ── Gemini 호출 ──────────────────────────────────────────────
 const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
 
 const MNEMONIC_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
@@ -98,24 +112,35 @@ function repairJSON(str) {
   throw new Error('JSON 파싱 실패')
 }
 
+// ── 분류 색상 ────────────────────────────────────────────────
 const TYPE_META = {
-  new:      { label: '새 카드',   color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: '#22c55e' },
-  upgrade:  { label: '내용 보강', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: '#f59e0b' },
-  existing: { label: '이미 보유', color: '#475569', bg: 'rgba(71,85,105,0.1)',  border: '#334155' },
+  new:      { label: '새 카드',     color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: '#22c55e' },
+  upgrade:  { label: '내용 보강',   color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: '#f59e0b' },
+  existing: { label: '이미 보유',   color: '#475569', bg: 'rgba(71,85,105,0.1)',  border: '#334155' },
 }
 
+// 안전한 데이터리스트 입력창 컴포넌트
 function DataListInput({ id, value, onChange, placeholder, style, options }) {
-  const safeOptions = Array.isArray(options) ? options : []
+  const safeOptions = Array.isArray(options) ? options : [];
   return (
     <div style={{ flex: 1, width: '100%', minWidth: 0 }}>
-      <input style={style} value={value || ''} onChange={onChange} placeholder={placeholder} list={id} />
+      <input
+        style={{...style, minWidth: 0}}
+        value={value || ''}
+        onChange={onChange}
+        placeholder={placeholder}
+        list={id}
+      />
       <datalist id={id}>
-        {safeOptions.map((opt, i) => <option key={i} value={opt != null ? String(opt) : ''} />)}
+        {safeOptions.map((opt, i) => (
+          <option key={i} value={opt != null ? String(opt) : ''} />
+        ))}
       </datalist>
     </div>
   )
 }
 
+// ── 인라인 편집 가능한 카드 아이템 ───────────────────────────
 function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getParts }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
@@ -123,63 +148,100 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getP
   const isQA = !card.mnemonic && card.answer != null
 
   let safeParts = []
-  try { if (typeof getParts === 'function') { const r = getParts(draft?.subject || ''); if (Array.isArray(r)) safeParts = r } } catch(e) {}
+  try {
+    if (typeof getParts === 'function') {
+      const partsResult = getParts(draft?.subject || '')
+      if (Array.isArray(partsResult)) safeParts = partsResult
+    }
+  } catch(e) { console.warn(e) }
   const safeSubjects = Array.isArray(subjects) ? subjects : []
 
-  const field = (key, placeholder, multiline) => {
-    const style = {
-      width: '100%', boxSizing: 'border-box', background: '#0a0f1e',
-      border: '1px solid #334155', borderRadius: 6, padding: '5px 8px', color: '#e2e8f0',
-      fontSize: key === 'mnemonic' ? 14 : 12, fontWeight: key === 'mnemonic' ? 700 : 400,
-      fontFamily: 'inherit', outline: 'none', resize: 'vertical', marginBottom: 4,
-    }
-    if (!multiline && (key === 'subject' || key === 'part')) {
-      const listId = `extract-${key}-${card.question || Math.random().toString(36)}`
-      return <DataListInput id={listId} value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} style={style} options={key === 'subject' ? safeSubjects : safeParts} />
-    }
-    return multiline
-      ? <textarea style={{ ...style, minHeight: 56 }} value={draft[key] || ''} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} />
-      : <input style={style} value={draft[key] || ''} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} />
+  const commitEdit = () => {
+    onChange(draft)
+    setEditing(false)
+  }
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box', minWidth: 0,
+    background: '#0a0f1e', border: '1px solid #334155',
+    borderRadius: 6, padding: '6px 9px', color: '#e2e8f0',
+    fontSize: 13, fontFamily: 'inherit', outline: 'none',
+    marginBottom: 5, resize: 'vertical',
+  }
+
+  if (editing) {
+    return (
+      <div style={{
+        background: checked ? 'rgba(99,102,241,0.1)' : 'rgba(15,23,42,0.7)',
+        border: `1px solid ${checked ? '#6366f1' : '#1e293b'}`,
+        borderRadius: 12, padding: '11px 13px',
+        display: 'flex', flexDirection: 'column', gap: 0, alignItems: 'stretch',
+        width: '100%', boxSizing: 'border-box', cursor: 'default'
+      }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap', width: '100%' }}>
+          <DataListInput id={`ext-sub-${card.question || Math.random().toString(36)}`} value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="과목" style={inputStyle} options={safeSubjects} />
+          <DataListInput id={`ext-part-${card.question || Math.random().toString(36)}`} value={draft.part} onChange={(e) => setDraft({ ...draft, part: e.target.value })} placeholder="단원" style={inputStyle} options={safeParts} />
+        </div>
+        <input style={inputStyle} value={draft.question || ''} onChange={(e) => setDraft({ ...draft, question: e.target.value })} placeholder="질문" />
+        {isQA ? (
+          <textarea style={{ ...inputStyle, minHeight: 60 }} value={draft.answer || ''} onChange={(e) => setDraft({ ...draft, answer: e.target.value })} placeholder="답" />
+        ) : (
+          <>
+            <input style={{ ...inputStyle, color: '#818cf8', fontWeight: 700 }} value={draft.mnemonic || ''} onChange={(e) => setDraft({ ...draft, mnemonic: e.target.value })} placeholder="두문자" />
+            <textarea style={{ ...inputStyle, minHeight: 60, fontSize: 12 }} value={draft.detail || ''} onChange={(e) => setDraft({ ...draft, detail: e.target.value })} placeholder="설명" />
+          </>
+        )}
+        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+          <button onClick={commitEdit} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600, flex: 1 }}>저장</button>
+          <button onClick={() => { setDraft(card); setEditing(false) }} style={{ background: '#1e293b', color: '#94a3b8', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 12, cursor: 'pointer', flex: 1 }}>취소</button>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div style={{ background: checked ? 'rgba(99,102,241,0.1)' : 'rgba(15,23,42,0.7)', border: `1px solid ${checked ? '#6366f1' : '#1e293b'}`, borderRadius: 12, padding: '11px 13px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-      <div onClick={onToggle} style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginTop: 3, cursor: 'pointer', border: `2px solid ${checked ? '#6366f1' : '#334155'}`, background: checked ? '#6366f1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{
+      background: checked ? 'rgba(99,102,241,0.1)' : 'rgba(15,23,42,0.7)',
+      border: `1px solid ${checked ? '#6366f1' : '#1e293b'}`,
+      borderRadius: 12, padding: '11px 13px',
+      display: 'flex', gap: 10, alignItems: 'flex-start',
+      width: '100%', boxSizing: 'border-box'
+    }}>
+      <div onClick={onToggle} style={{
+        width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginTop: 3, cursor: 'pointer',
+        border: `2px solid ${checked ? '#6366f1' : '#334155'}`,
+        background: checked ? '#6366f1' : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
         {checked && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>}
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+
+      <div style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
         <div style={{ display: 'flex', gap: 5, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 10, borderRadius: 4, padding: '2px 7px', fontWeight: 600, background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>{meta.label}</span>
-          {!editing && <>
-            <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.subject}</span>
-            <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.part}</span>
-          </>}
+          <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.subject || '미분류'}</span>
+          <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.part || '미분류'}</span>
         </div>
-        {editing ? (
-          <div onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>{field('subject', '과목')}{field('part', '파트')}</div>
-            {field('question', '질문')}
-            {isQA ? field('answer', '답', true) : <>{field('mnemonic', '두문자')}{field('detail', '설명', true)}</>}
-            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-              <button onClick={() => { onChange(draft); setEditing(false) }} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, padding: '5px 14px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>저장</button>
-              <button onClick={() => { setDraft(card); setEditing(false) }} style={{ background: '#1e293b', color: '#94a3b8', border: 'none', borderRadius: 7, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}>취소</button>
-            </div>
-          </div>
-        ) : (
-          <div onClick={onToggle} style={{ cursor: 'pointer' }}>
-            <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
-            {isQA ? <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{card.answer}</div> : <>
-              <div style={{ color: '#818cf8', fontSize: 14, fontWeight: 700, letterSpacing: 1, marginBottom: type === 'upgrade' ? 4 : 0 }}>{card.mnemonic}</div>
+        <div onClick={onToggle} style={{ cursor: 'pointer', wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
+          <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
+          {isQA ? (
+            <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{card.answer}</div>
+          ) : (
+            <>
+              <div style={{ color: '#818cf8', fontSize: 14, fontWeight: 700, letterSpacing: 1, marginBottom: type === 'upgrade' ? 4 : 0, overflowWrap: 'anywhere' }}>{card.mnemonic}</div>
               {type === 'upgrade' && <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.5 }}>{card.detail}</div>}
-            </>}
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
-      {!editing && <button onClick={(e) => { e.stopPropagation(); setDraft(card); setEditing(true) }} style={{ background: 'none', border: 'none', color: '#334155', cursor: 'pointer', fontSize: 14, padding: '2px 4px', flexShrink: 0 }} title="편집">✎</button>}
+      <button onClick={(e) => { e.stopPropagation(); setDraft(card); setEditing(true) }} style={{
+        background: 'none', border: 'none', color: '#334155', cursor: 'pointer', fontSize: 14, padding: '2px 4px', flexShrink: 0,
+      }} title="편집">✎</button>
     </div>
   )
 }
 
+// ── 메인 컴포넌트 ────────────────────────────────────────────
 export default function ExtractPage({ cards, onImport }) {
   const [apiKey, setApiKey] = useState(() => sessionStorage.getItem('gemini_key') || '')
   const [extractType, setExtractType] = useState('mnemonic')
@@ -194,39 +256,25 @@ export default function ExtractPage({ cards, onImport }) {
   const [progress, setProgress] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [importMsg, setImportMsg] = useState('')
-  const [loadingPct, setLoadingPct] = useState(0)
   const inputRef = useRef(null)
 
-  // ── 퍼센테이지 애니메이션 ─────────────────────────────────
-  useEffect(() => {
-    if (status !== 'loading') {
-      if (status === 'done') setLoadingPct(100)
-      return
-    }
-    setLoadingPct(0)
-    const iv = setInterval(() => {
-      setLoadingPct((p) => {
-        const remaining = 92 - p
-        return Math.min(92, p + Math.max(0.4, remaining * 0.04))
-      })
-    }, 350)
-    return () => clearInterval(iv)
-  }, [status])
-
+  // 안전한 subjects 추출
   const allSubjects = useMemo(() => {
     let existing = []
-    try { if (Array.isArray(cards?.subjects)) existing = cards.subjects } catch(e) {}
-    const newSubjects = Array.isArray(extracted) ? extracted.map((c) => c?.subject).filter(Boolean) : []
+    try { if (Array.isArray(cards?.subjects)) existing = cards.subjects } catch(e){}
+    const newSubjects = Array.isArray(extracted) ? extracted.map(c => c?.subject).filter(Boolean) : []
     return [...new Set([...existing, ...newSubjects])]
   }, [cards?.subjects, extracted])
 
+  // 안전한 parts 추출
   const getPartsForSubject = useCallback((subj) => {
     if (!subj) return []
     let existingParts = []
-    try { if (typeof cards?.parts === 'function') existingParts = cards.parts(subj) || [] } catch(e) {}
-    const newParts = Array.isArray(extracted) ? extracted.filter((c) => c?.subject === subj).map((c) => c?.part).filter(Boolean) : []
+    try { if (typeof cards?.parts === 'function') existingParts = cards.parts(subj) || [] } catch(e){}
+    const newParts = Array.isArray(extracted) ? extracted.filter(c => c?.subject === subj).map(c => c?.part).filter(Boolean) : []
     return [...new Set([...existingParts, ...newParts])]
   }, [cards, extracted])
+
 
   const saveKey = (k) => { sessionStorage.setItem('gemini_key', k); setApiKey(k) }
 
@@ -242,19 +290,28 @@ export default function ExtractPage({ cards, onImport }) {
     try {
       setProgress(`${label} 읽는 중...`)
       const prompt = extractType === 'qa' ? QA_PROMPT : MNEMONIC_PROMPT
-      const raw = (await extractWithRetry(apiKey, parts, prompt, setProgress)).replace(/```json|```/g, '').trim()
+      const raw = (await extractWithRetry(apiKey, parts, prompt, setProgress))
+        .replace(/```json|```/g, '').trim()
       const parsed = repairJSON(raw)
       if (!Array.isArray(parsed) || parsed.length === 0)
         throw new Error(extractType === 'qa' ? '핵심 내용을 찾지 못했습니다.' : '두문자 카드를 찾지 못했습니다.')
 
       const normalized = parsed.map((c) =>
         extractType === 'qa'
-          ? { subject: c.subject || '미분류', part: c.part || '미분류', question: c.question || '', mnemonic: '', detail: '', answer: c.answer || '' }
+          ? { subject: c.subject || '미분류', part: c.part || '미분류',
+              question: c.question || '', mnemonic: '', detail: '', answer: c.answer || '' }
           : c
       )
-      const classified = normalized.map((c) => ({ ...c, _type: classifyCard(c, cards.allCards).type }))
+
+      const classified = normalized.map((c) => ({
+        ...c,
+        _type: classifyCard(c, cards.allCards || []).type,
+      }))
+
       setExtracted(classified)
-      setSelected(new Set(classified.map((c, i) => i).filter((i) => classified[i]._type !== 'existing')))
+      setSelected(new Set(
+        classified.map((c, i) => i).filter((i) => classified[i]._type !== 'existing')
+      ))
       setFilterTab('new')
       setStatus('done')
     } catch (e) {
@@ -269,7 +326,9 @@ export default function ExtractPage({ cards, onImport }) {
     const ext = f.name.split('.').pop().toLowerCase()
     let parts
     if (ext === 'txt') {
-      const text = await new Promise((res) => { const r = new FileReader(); r.onload = (e) => res(e.target.result); r.readAsText(f) })
+      const text = await new Promise((res) => {
+        const r = new FileReader(); r.onload = (e) => res(e.target.result); r.readAsText(f)
+      })
       parts = [{ text: `다음 텍스트에서 두문자 카드를 빠짐없이 추출해주세요:\n\n${text}` }]
     } else {
       const base64 = await readBase64(f)
@@ -283,11 +342,21 @@ export default function ExtractPage({ cards, onImport }) {
 
   const handleTextSubmit = useCallback(async () => {
     if (!apiKey || !textInput.trim()) return
-    await runExtraction([{ text: `다음 텍스트에서 두문자 카드를 빠짐없이 추출해주세요:\n\n${textInput}` }], '텍스트')
+    const parts = [{ text: `다음 텍스트에서 두문자 카드를 빠짐없이 추출해주세요:\n\n${textInput}` }]
+    await runExtraction(parts, '텍스트')
   }, [apiKey, textInput, runExtraction])
 
-  const toggle = (i) => setSelected((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
-  const updateCard = (i, updated) => setExtracted((prev) => { const next = [...prev]; next[i] = { ...updated, _type: classifyCard(updated, cards.allCards).type }; return next })
+  const toggle = (i) => setSelected((prev) => {
+    const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n
+  })
+
+  const updateCard = (i, updated) => {
+    setExtracted((prev) => {
+      const next = [...prev]
+      next[i] = { ...updated, _type: classifyCard(updated, cards.allCards || []).type }
+      return next
+    })
+  }
 
   const counts = {
     all: extracted.length,
@@ -295,51 +364,74 @@ export default function ExtractPage({ cards, onImport }) {
     upgrade: extracted.filter((c) => c._type === 'upgrade').length,
     existing: extracted.filter((c) => c._type === 'existing').length,
   }
-  const visible = extracted.map((c, i) => ({ c, i })).filter(({ c }) => filterTab === 'all' || c._type === filterTab)
+
+  const visible = extracted
+    .map((c, i) => ({ c, i }))
+    .filter(({ c }) => filterTab === 'all' || c._type === filterTab)
 
   const toggleAll = () => {
-    const vis = visible.map(({ i }) => i)
-    const allChecked = vis.every((i) => selected.has(i))
-    setSelected((prev) => { const n = new Set(prev); vis.forEach((i) => allChecked ? n.delete(i) : n.add(i)); return n })
+    const visibleIdxs = visible.map(({ i }) => i)
+    const allChecked = visibleIdxs.every((i) => selected.has(i))
+    setSelected((prev) => {
+      const n = new Set(prev)
+      visibleIdxs.forEach((i) => allChecked ? n.delete(i) : n.add(i))
+      return n
+    })
   }
 
   const doImport = () => {
     const toAdd = extracted.filter((c, i) => selected.has(i)).map(({ _type, ...c }) => c)
-    const before = cards.allCards.length
+    const before = (cards.allCards || []).length
     cards.addCards(toAdd)
     setTimeout(() => {
-      const added = cards.allCards.length - before
+      const added = (cards.allCards || []).length - before
       const skipped = toAdd.length - added
       setImportMsg(skipped > 0 ? `✓ ${added}개 추가 (중복 ${skipped}개 제외)` : `✓ ${added}개 추가됨`)
       setTimeout(() => { setImportMsg(''); onImport() }, 1500)
     }, 50)
   }
 
-  const reset = () => { setFile(null); setStatus('idle'); setExtracted([]); setSelected(new Set()); setErrorMsg(''); setTextInput('') }
+  const reset = () => {
+    setFile(null); setStatus('idle'); setExtracted([]); setSelected(new Set())
+    setErrorMsg(''); setTextInput('')
+  }
+
+  const ikey = (
+    <div style={{ marginBottom: 20, width: '100%', boxSizing: 'border-box' }}>
+      <span style={{ color: '#94a3b8', fontSize: 13, marginBottom: 8, display: 'block' }}>
+        Gemini API 키{' '}
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: '#818cf8', fontSize: 11 }}>무료 발급 →</a>
+      </span>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'nowrap' }}>
+        <input type="password" placeholder="AIza..."
+          defaultValue={apiKey}
+          onBlur={(e) => e.target.value.trim() && saveKey(e.target.value.trim())}
+          style={{
+            flex: 1, background: '#0f172a', border: '1px solid #334155', minWidth: 0,
+            borderRadius: 10, padding: '10px 14px', color: '#e2e8f0',
+            fontSize: 14, fontFamily: 'monospace', outline: 'none',
+          }} />
+        <button
+          onClick={(e) => { const v = e.target.previousSibling.value.trim(); if (v) saveKey(v) }}
+          style={{
+            background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', flexShrink: 0,
+            border: 'none', borderRadius: 10, padding: '10px 20px',
+            fontSize: 14, cursor: 'pointer', fontWeight: 700,
+          }}>저장</button>
+      </div>
+      <div style={{ color: '#334155', fontSize: 11, marginTop: 6 }}>키는 브라우저 세션에만 저장됩니다</div>
+    </div>
+  )
 
   return (
-    <div>
+    <div style={{ width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <h2 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>AI 카드 추출</h2>
-      <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>
+      <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24, wordBreak: 'keep-all' }}>
         PDF 업로드 또는 텍스트 붙여넣기 — Gemini AI가 두문자를 <b style={{ color: '#94a3b8' }}>빠짐없이</b> 추출합니다
       </p>
 
-      {/* API 키 */}
-      <div style={{ marginBottom: 20 }}>
-        <span style={{ color: '#94a3b8', fontSize: 13, marginBottom: 8, display: 'block' }}>
-          Gemini API 키{' '}
-          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: '#818cf8', fontSize: 11 }}>무료 발급 →</a>
-        </span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input type="password" placeholder="AIza..." defaultValue={apiKey}
-            onBlur={(e) => e.target.value.trim() && saveKey(e.target.value.trim())}
-            style={{ flex: 1, background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px', color: '#e2e8f0', fontSize: 14, fontFamily: 'monospace', outline: 'none' }} />
-          <button onClick={(e) => { const v = e.target.previousSibling.value.trim(); if (v) saveKey(v) }}
-            style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 14, cursor: 'pointer', fontWeight: 700 }}>저장</button>
-        </div>
-        <div style={{ color: '#334155', fontSize: 11, marginTop: 6 }}>키는 브라우저 세션에만 저장됩니다</div>
-      </div>
+      {ikey}
 
       {!apiKey && (
         <div style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 12, padding: 16, color: '#64748b', fontSize: 13, textAlign: 'center' }}>
@@ -349,96 +441,176 @@ export default function ExtractPage({ cards, onImport }) {
 
       {apiKey && status === 'idle' && (
         <>
-          {/* 추출 방식 */}
+          {/* 추출 방식 선택 */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 8 }}>추출 방식</div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {[['mnemonic', '🔤 두문자 카드', '두문자(약어)를 뽑아 카드로'], ['qa', '💬 질문-답 카드', '핵심 내용을 Q&A로']].map(([type, label, desc]) => (
-                <button key={type} onClick={() => setExtractType(type)} style={{ flex: 1, textAlign: 'left', background: extractType === type ? 'rgba(99,102,241,0.12)' : 'rgba(15,23,42,0.6)', border: `1.5px solid ${extractType === type ? '#6366f1' : '#1e293b'}`, borderRadius: 12, padding: '11px 13px', cursor: 'pointer', transition: 'all 0.15s' }}>
-                  <div style={{ color: extractType === type ? '#e2e8f0' : '#94a3b8', fontSize: 13, fontWeight: 700 }}>{label}</div>
-                  <div style={{ color: '#475569', fontSize: 11, marginTop: 2 }}>{desc}</div>
+              {[
+                ['mnemonic', '🔤 두문자 카드', '두문자(약어)를 뽑아 카드로'],
+                ['qa', '💬 질문-답 카드', '핵심 내용을 Q&A로'],
+              ].map(([type, label, desc]) => (
+                <button key={type} onClick={() => setExtractType(type)} style={{
+                  flex: 1, textAlign: 'left', minWidth: 0,
+                  background: extractType === type ? 'rgba(99,102,241,0.12)' : 'rgba(15,23,42,0.6)',
+                  border: `1.5px solid ${extractType === type ? '#6366f1' : '#1e293b'}`,
+                  borderRadius: 12, padding: '11px 13px', cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}>
+                  <div style={{ color: extractType === type ? '#e2e8f0' : '#94a3b8', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>{label}</div>
+                  <div style={{ color: '#475569', fontSize: 11, marginTop: 2, wordBreak: 'keep-all' }}>{desc}</div>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* 입력 모드 */}
+          {/* 입력 모드 토글 */}
           <div style={{ display: 'flex', gap: 0, marginBottom: 16, background: '#0f172a', borderRadius: 10, padding: 3, width: 'fit-content' }}>
             {[['file', '📄 파일 업로드'], ['text', '✎ 텍스트 붙여넣기']].map(([mode, label]) => (
-              <button key={mode} onClick={() => setInputMode(mode)} style={{ background: inputMode === mode ? '#1e293b' : 'none', color: inputMode === mode ? '#e2e8f0' : '#475569', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, cursor: 'pointer', fontWeight: inputMode === mode ? 600 : 400, transition: 'all 0.15s' }}>{label}</button>
+              <button key={mode} onClick={() => setInputMode(mode)} style={{
+                background: inputMode === mode ? '#1e293b' : 'none',
+                color: inputMode === mode ? '#e2e8f0' : '#475569',
+                border: 'none', borderRadius: 8, padding: '7px 16px',
+                fontSize: 13, cursor: 'pointer', fontWeight: inputMode === mode ? 600 : 400,
+                transition: 'all 0.15s',
+              }}>{label}</button>
             ))}
           </div>
 
           {inputMode === 'file' ? (
-            <div style={{ border: `2px dashed ${dragging ? '#6366f1' : '#334155'}`, borderRadius: 16, padding: '40px 24px', textAlign: 'center', cursor: 'pointer', background: dragging ? 'rgba(99,102,241,0.07)' : 'rgba(15,23,42,0.6)', transition: 'all 0.2s' }}
+            <div
+              style={{
+                border: `2px dashed ${dragging ? '#6366f1' : '#334155'}`,
+                borderRadius: 16, padding: '40px 24px', textAlign: 'center', cursor: 'pointer',
+                background: dragging ? 'rgba(99,102,241,0.07)' : 'rgba(15,23,42,0.6)',
+                transition: 'all 0.2s', width: '100%', boxSizing: 'border-box'
+              }}
               onClick={() => inputRef.current?.click()}
               onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
               onDragLeave={() => setDragging(false)}
-              onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}>
-              <input ref={inputRef} type="file" accept=".pdf,.doc,.docx,.txt" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) handleFile(f) }} />
+              onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
+            >
+              <input ref={inputRef} type="file" accept=".pdf,.doc,.docx,.txt" style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files[0]; if (f) handleFile(f) }} />
               <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
-              <div style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.6 }}>PDF, Word, TXT 파일을 끌어다 놓거나<br /><span style={{ color: '#818cf8', fontWeight: 600 }}>클릭하여 선택</span></div>
+              <div style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.6, wordBreak: 'keep-all' }}>
+                PDF, Word, TXT 파일을 끌어다 놓거나<br />
+                <span style={{ color: '#818cf8', fontWeight: 600 }}>클릭하여 선택</span>
+              </div>
             </div>
           ) : (
-            <div>
-              <textarea value={textInput} onChange={(e) => setTextInput(e.target.value)}
-                placeholder={'강의 필기, 카카오톡 정리본 등을 여기에 붙여넣으세요.\n\n예시:\n이행지체의 요건: 이.가.게.귀.위\n[이행기/이행 가능함에도/이행 게을리/귀책사유/위법성]'}
-                style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(15,23,42,0.8)', border: '1px solid #334155', borderRadius: 14, padding: '16px', color: '#e2e8f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', resize: 'vertical', minHeight: 200, lineHeight: 1.7 }} />
-              <button onClick={handleTextSubmit} disabled={!textInput.trim()}
-                style={{ marginTop: 10, width: '100%', background: textInput.trim() ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b', color: textInput.trim() ? '#fff' : '#475569', border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, cursor: textInput.trim() ? 'pointer' : 'not-allowed', fontWeight: 700 }}>
-                두문자 추출
-              </button>
+            <div style={{ width: '100%', boxSizing: 'border-box' }}>
+              <textarea
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                placeholder={'강의 필기, 카카오톡 정리본, 웹페이지 내용 등을 여기에 붙여넣으세요.\n\n예시:\n이행지체의 요건: 이.가.게.귀.위\n[이행기/이행 가능함에도/이행 게을리/귀책사유/위법성]'}
+                style={{
+                  width: '100%', boxSizing: 'border-box', minWidth: 0,
+                  background: 'rgba(15,23,42,0.8)', border: '1px solid #334155',
+                  borderRadius: 14, padding: '16px', color: '#e2e8f0',
+                  fontSize: 13, fontFamily: 'inherit', outline: 'none',
+                  resize: 'vertical', minHeight: 200, lineHeight: 1.7,
+                }}
+              />
+              <button
+                onClick={handleTextSubmit}
+                disabled={!textInput.trim()}
+                style={{
+                  marginTop: 10, width: '100%',
+                  background: textInput.trim() ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b',
+                  color: textInput.trim() ? '#fff' : '#475569',
+                  border: 'none', borderRadius: 12, padding: '13px',
+                  fontSize: 14, cursor: textInput.trim() ? 'pointer' : 'not-allowed', fontWeight: 700,
+                }}
+              >두문자 추출</button>
             </div>
           )}
         </>
       )}
 
-      {/* ── 로딩 (퍼센테이지) ── */}
       {status === 'loading' && (
-        <div style={{ background: 'rgba(15,23,42,0.8)', border: '1px solid #1e293b', borderRadius: 16, padding: '48px 32px', textAlign: 'center' }}>
-          <div style={{ fontSize: 52, fontWeight: 800, color: '#6366f1', marginBottom: 8, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>
-            {Math.round(loadingPct)}%
-          </div>
-          <div style={{ background: '#0f172a', borderRadius: 8, height: 6, margin: '0 auto 24px', width: '100%', maxWidth: 300, overflow: 'hidden' }}>
-            <div style={{ background: 'linear-gradient(90deg,#6366f1,#8b5cf6)', height: '100%', borderRadius: 8, width: `${loadingPct}%`, transition: 'width 0.35s ease' }} />
-          </div>
+        <div style={{ background: 'rgba(15,23,42,0.8)', border: '1px solid #1e293b', borderRadius: 16, padding: '60px 32px', textAlign: 'center', width: '100%', boxSizing: 'border-box' }}>
+          <div style={{ width: 40, height: 40, border: '3px solid #1e293b', borderTop: '3px solid #6366f1', borderRadius: '50%', margin: '0 auto 20px', animation: 'spin 1s linear infinite' }} />
           <div style={{ color: '#94a3b8', fontSize: 14 }}>{progress}</div>
-          {file && <div style={{ color: '#475569', fontSize: 12, marginTop: 6 }}>{file.name}</div>}
+          {file && <div style={{ color: '#475569', fontSize: 12, marginTop: 6, wordBreak: 'break-all' }}>{file.name}</div>}
         </div>
       )}
 
       {status === 'error' && (
-        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 16, padding: '28px', textAlign: 'center' }}>
+        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 16, padding: '28px', textAlign: 'center', width: '100%', boxSizing: 'border-box' }}>
           <div style={{ fontSize: 28, marginBottom: 10 }}>⚠️</div>
-          <div style={{ color: '#fca5a5', fontSize: 14, marginBottom: 16 }}>{errorMsg}</div>
+          <div style={{ color: '#fca5a5', fontSize: 14, marginBottom: 16, wordBreak: 'keep-all' }}>{errorMsg}</div>
           <button onClick={reset} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 24px', fontSize: 13, cursor: 'pointer' }}>다시 시도</button>
         </div>
       )}
 
       {status === 'done' && (
-        <div>
+        <div style={{ width: '100%' }}>
+          {/* 분류 탭 */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-            {[['all', `전체 ${counts.all}`], ['new', `🆕 새 카드 ${counts.new}`], ['upgrade', `⬆ 내용 보강 ${counts.upgrade}`], ['existing', `✓ 이미 보유 ${counts.existing}`]].map(([tab, label]) => (
-              <button key={tab} onClick={() => setFilterTab(tab)} style={{ background: filterTab === tab ? '#1e293b' : 'none', border: `1px solid ${filterTab === tab ? '#6366f1' : '#1e293b'}`, color: filterTab === tab ? '#e2e8f0' : '#475569', borderRadius: 8, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: filterTab === tab ? 600 : 400 }}>{label}</button>
+            {[
+              ['all', `전체 ${counts.all}`],
+              ['new', `🆕 새 카드 ${counts.new}`],
+              ['upgrade', `⬆ 내용 보강 ${counts.upgrade}`],
+              ['existing', `✓ 이미 보유 ${counts.existing}`],
+            ].map(([tab, label]) => (
+              <button key={tab} onClick={() => setFilterTab(tab)} style={{
+                background: filterTab === tab ? '#1e293b' : 'none',
+                border: `1px solid ${filterTab === tab ? '#6366f1' : '#1e293b'}`,
+                color: filterTab === tab ? '#e2e8f0' : '#475569',
+                borderRadius: 8, padding: '5px 12px', fontSize: 12,
+                cursor: 'pointer', fontWeight: filterTab === tab ? 600 : 400, whiteSpace: 'nowrap'
+              }}>{label}</button>
             ))}
-            <button onClick={toggleAll} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #1e293b', borderRadius: 8, padding: '5px 12px', color: '#475569', fontSize: 12, cursor: 'pointer' }}>
+            <button onClick={toggleAll} style={{
+              marginLeft: 'auto', background: 'none', border: '1px solid #1e293b',
+              borderRadius: 8, padding: '5px 12px', color: '#475569', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap'
+            }}>
               {visible.every(({ i }) => selected.has(i)) ? '전체 해제' : '전체 선택'}
             </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', marginBottom: 14 }}>
+
+          {/* 카드 목록 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', overflowX: 'hidden', marginBottom: 14, width: '100%', boxSizing: 'border-box' }}>
             {visible.length === 0
               ? <div style={{ color: '#334155', textAlign: 'center', padding: '24px 0', fontSize: 13 }}>해당 카드가 없습니다</div>
               : visible.map(({ c, i }) => (
-                <CardItem key={i} card={c} type={c._type} checked={selected.has(i)} onToggle={() => toggle(i)} onChange={(updated) => updateCard(i, updated)} subjects={allSubjects} getParts={getPartsForSubject} />
-              ))}
+                <CardItem
+                  key={i} card={c} type={c._type}
+                  checked={selected.has(i)}
+                  onToggle={() => toggle(i)}
+                  onChange={(updated) => updateCard(i, updated)}
+                  subjects={allSubjects}
+                  getParts={getPartsForSubject}
+                />
+              ))
+            }
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button style={{ flex: 1, background: selected.size === 0 ? '#1e293b' : 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: selected.size === 0 ? '#475569' : '#fff', border: 'none', borderRadius: 12, padding: '13px 20px', fontSize: 14, cursor: selected.size === 0 ? 'not-allowed' : 'pointer', fontWeight: 700 }} disabled={selected.size === 0} onClick={doImport}>
+
+          {/* 액션 */}
+          <div style={{ display: 'flex', gap: 10, width: '100%', flexWrap: 'wrap' }}>
+            <button
+              style={{
+                flex: 1, minWidth: '150px',
+                background: selected.size === 0 ? '#1e293b' : 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                color: selected.size === 0 ? '#475569' : '#fff',
+                border: 'none', borderRadius: 12, padding: '13px 20px',
+                fontSize: 14, cursor: selected.size === 0 ? 'not-allowed' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap'
+              }}
+              disabled={selected.size === 0} onClick={doImport}
+            >
               내 카드에 추가 ({selected.size}개)
             </button>
-            <button onClick={reset} style={{ background: '#1e293b', color: '#94a3b8', border: 'none', borderRadius: 12, padding: '13px 20px', fontSize: 14, cursor: 'pointer' }}>새로 추출</button>
+            <button onClick={reset} style={{
+              background: '#1e293b', color: '#94a3b8', border: 'none', flex: '0 0 auto',
+              borderRadius: 12, padding: '13px 20px', fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap'
+            }}>새로 추출</button>
           </div>
-          {importMsg && <div style={{ marginTop: 10, textAlign: 'center', color: '#22c55e', fontSize: 13, fontWeight: 600 }}>{importMsg}</div>}
+
+          {importMsg && (
+            <div style={{ marginTop: 10, textAlign: 'center', color: '#22c55e', fontSize: 13, fontWeight: 600 }}>
+              {importMsg}
+            </div>
+          )}
         </div>
       )}
     </div>
