@@ -69,7 +69,6 @@ const S = {
   },
   folderCard: {
     background: 'linear-gradient(145deg, rgba(30,41,59,0.8), rgba(15,23,42,0.8))',
-    border: '1px solid #334155',
     borderRadius: 16,
     padding: '16px 14px',
     display: 'flex',
@@ -78,7 +77,7 @@ const S = {
     transition: 'all 0.2s ease',
   },
   folderIcon: { fontSize: 36, marginBottom: 10, lineHeight: 1 },
-  folderTitle: { color: '#f8fafc', fontSize: 14, fontWeight: 700, marginBottom: 4, wordBreak: 'keep-all', lineHeight: 1.3 },
+  folderTitle: { color: '#f8fafc', fontSize: 14, fontWeight: 700, marginBottom: 4, overflowWrap: 'break-word', lineHeight: 1.3 },
   folderCount: { color: '#64748b', fontSize: 11, fontWeight: 500 },
   folderActions: {
     display: 'flex', gap: 6, marginTop: 14, paddingTop: 14,
@@ -86,8 +85,8 @@ const S = {
   },
   actionBtn: (type) => ({
     flex: 1, 
-    background: type === 'delete' ? 'rgba(239,68,68,0.1)' : type === 'move' ? 'rgba(56,189,248,0.1)' : 'rgba(99,102,241,0.1)',
-    color: type === 'delete' ? '#f87171' : type === 'move' ? '#38bdf8' : '#818cf8', 
+    background: type === 'delete' ? 'rgba(239,68,68,0.1)' : 'rgba(99,102,241,0.1)',
+    color: type === 'delete' ? '#f87171' : '#818cf8', 
     border: 'none', borderRadius: 8,
     padding: '7px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer'
   })
@@ -109,112 +108,6 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
           <option key={i} value={opt != null ? String(opt) : ''} />
         ))}
       </datalist>
-    </div>
-  )
-}
-
-function CreateFolderModal({ type, onSave, onClose }) {
-  const [name, setName] = useState('')
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(2px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600, padding: 20
-    }} onClick={onClose}>
-      <div style={{
-        background: '#0f172a', border: '1px solid #38bdf8', borderRadius: 16, padding: 24, width: '100%', maxWidth: 340,
-        boxShadow: '0 10px 25px -5px rgba(56, 189, 248, 0.2)'
-      }} onClick={e => e.stopPropagation()}>
-        <div style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 800, marginBottom: 12 }}>
-          {type === 'subject' ? '📁 새 과목 만들기' : '📂 새 단원 만들기'}
-        </div>
-        <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>
-          새로 만들 폴더의 이름을 입력해주세요.<br/>
-          (생성 후 카드를 이동하여 넣을 수 있습니다)
-        </div>
-        <input 
-          autoFocus
-          style={{
-            width: '100%', boxSizing: 'border-box', background: '#0a0f1e',
-            border: '1px solid #6366f1', borderRadius: 8, padding: '12px 14px',
-            color: '#e2e8f0', fontSize: 14, outline: 'none', marginBottom: 20
-          }}
-          value={name} onChange={e => setName(e.target.value)}
-          placeholder="이름 입력"
-        />
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button style={{ ...S.btn('primary'), flex: 1 }} onClick={() => onSave(name)} disabled={!name.trim()}>
-            생성하기
-          </button>
-          <button style={{ ...S.btn('default'), flex: 1 }} onClick={onClose}>취소</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function MoveModal({ target, onSave, onClose, subjects, getParts }) {
-  const isCard = target.type === 'card';
-  const initialSubj = isCard ? target.card.subject : target.subject;
-  const initialPart = isCard ? target.card.part : target.part;
-  
-  const [newSubj, setNewSubj] = useState(initialSubj || '');
-  const [newPart, setNewPart] = useState(initialPart || '');
-
-  const safeSubjects = Array.isArray(subjects) ? subjects : [];
-  let safeParts = [];
-  try {
-    if (typeof getParts === 'function') {
-      const partsResult = getParts(newSubj);
-      if (Array.isArray(partsResult)) safeParts = partsResult;
-    }
-  } catch(e) {}
-
-  const inputStyle = {
-    width: '100%', boxSizing: 'border-box', background: '#0a0f1e',
-    border: '1px solid #38bdf8', borderRadius: 8, padding: '12px 14px',
-    color: '#e2e8f0', fontSize: 14, outline: 'none'
-  };
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(2px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: 20
-    }} onClick={onClose}>
-      <div style={{
-        background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360,
-      }} onClick={e => e.stopPropagation()}>
-        <div style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 800, marginBottom: 12 }}>🚀 위치 이동</div>
-        <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>
-          {isCard ? '이 카드를' : <span><strong style={{color:'#38bdf8'}}>{initialPart}</strong> 단원 전체를</span>} 어디로 이동할까요? <br/>
-          (목록에 없는 새 이름을 입력하면 폴더가 생성됩니다.)
-        </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>이동할 과목 (상위 폴더)</div>
-          <DataListInput
-            id="move-modal-subj" value={newSubj}
-            onChange={(e) => setNewSubj(e.target.value)}
-            placeholder="과목명 입력" style={inputStyle} options={safeSubjects}
-          />
-        </div>
-        
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>이동할 단원 (하위 폴더)</div>
-          <DataListInput
-            id="move-modal-part" value={newPart}
-            onChange={(e) => setNewPart(e.target.value)}
-            placeholder="단원명 입력" style={inputStyle} options={safeParts}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button style={{ ...S.btn('primary'), flex: 1, background: 'linear-gradient(135deg,#0284c7,#38bdf8)' }} 
-                  onClick={() => onSave(newSubj.trim(), newPart.trim())}>
-            이동하기
-          </button>
-          <button style={{ ...S.btn('default'), flex: 1 }} onClick={onClose}>취소</button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -306,11 +199,13 @@ export default function ManagePage({ cards }) {
   const [customSubjOrder, setCustomSubjOrder] = useState(() => JSON.parse(localStorage.getItem('domun_subj_order') || '[]'))
   const [customPartOrder, setCustomPartOrder] = useState(() => JSON.parse(localStorage.getItem('domun_part_order') || '{}'))
 
+  // Drag & Drop State
+  const [dragItem, setDragItem] = useState(null)
+  const [dragOverTarget, setDragOverTarget] = useState(null)
+
   // 모달 상태
   const [renameTarget, setRenameTarget] = useState(null) 
   const [delTarget, setDelTarget] = useState(null)
-  const [moveTarget, setMoveTarget] = useState(null)
-  const [createModalTarget, setCreateModalTarget] = useState(null)
 
   const showToast = (msg, color = '#6366f1') => {
     setToast({ msg, color })
@@ -356,83 +251,128 @@ export default function ManagePage({ cards }) {
   const partCards = useMemo(() => currentSubjectCards.filter(c => safeStr(c.part) === safeStr(currentPart)), [currentSubjectCards, currentPart])
 
   // --- 동작 핸들러 ---
-  const handleCreateFolder = (name) => {
-    if (!name || !name.trim()) return;
-    const cleanName = name.trim();
-    
-    if (createModalTarget === 'subject') {
+  const handleCreateSubject = () => {
+    const name = prompt("새 과목(상위 폴더) 이름을 입력하세요:\n(입력 후 드래그 앤 드롭으로 카드를 넣을 수 있습니다)");
+    if (name && name.trim()) {
         setCustomSubjOrder(prev => {
-            const next = [...prev, cleanName];
+            const next = [...prev, name.trim()];
             localStorage.setItem('domun_subj_order', JSON.stringify(next));
             return next;
         });
-        showToast(`✓ '${cleanName}' 과목이 생성되었습니다.`, '#22c55e');
-    } else if (createModalTarget === 'part') {
+    }
+  }
+
+  const handleCreatePart = () => {
+    const name = prompt(`새 단원(하위 폴더) 이름을 입력하세요:\n[${currentSubject} 과목 내 생성]`);
+    if (name && name.trim()) {
         setCustomPartOrder(prev => {
             const arr = prev[currentSubject] || [];
-            const next = { ...prev, [currentSubject]: [...arr, cleanName] };
+            const next = { ...prev, [currentSubject]: [...arr, name.trim()] };
             localStorage.setItem('domun_part_order', JSON.stringify(next));
             return next;
         });
-        showToast(`✓ '${cleanName}' 단원이 생성되었습니다.`, '#22c55e');
     }
-    setCreateModalTarget(null);
   }
 
-  // --- ⬆️⬇️ 이동 화살표 핸들러 ---
-  const moveFolderUp = (type, name) => {
-      if (type === 'subject') {
-          setCustomSubjOrder(prev => {
-              const arr = [...sortedSubjects];
-              const idx = arr.indexOf(name);
-              if (idx > 0) {
-                  [arr[idx-1], arr[idx]] = [arr[idx], arr[idx-1]];
-                  localStorage.setItem('domun_subj_order', JSON.stringify(arr));
-                  return arr;
-              }
-              return prev;
-          });
-      } else {
-          setCustomPartOrder(prev => {
-              const arr = [...sortedParts];
-              const idx = arr.indexOf(name);
-              if (idx > 0) {
-                  [arr[idx-1], arr[idx]] = [arr[idx], arr[idx-1]];
-                  const next = { ...prev, [currentSubject]: arr };
-                  localStorage.setItem('domun_part_order', JSON.stringify(next));
-                  return next;
-              }
-              return prev;
-          });
-      }
+  // --- 🚀 Drag and Drop 핸들러 ---
+  const handleDragStart = (e, type, id, payload) => {
+      e.stopPropagation();
+      setDragItem({ type, id, payload });
+      e.dataTransfer.effectAllowed = 'move';
+      // 투명한 더미 이미지 (깔끔한 UI 위함)
+      const img = new Image(); img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      e.dataTransfer.setDragImage(img, 0, 0);
   }
 
-  const moveFolderDown = (type, name) => {
-      if (type === 'subject') {
-          setCustomSubjOrder(prev => {
-              const arr = [...sortedSubjects];
-              const idx = arr.indexOf(name);
-              if (idx < arr.length - 1) {
-                  [arr[idx], arr[idx+1]] = [arr[idx+1], arr[idx]];
-                  localStorage.setItem('domun_subj_order', JSON.stringify(arr));
-                  return arr;
-              }
-              return prev;
-          });
-      } else {
+  const handleDragOver = (e, type, id) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      if (dragOverTarget?.id !== id) setDragOverTarget({ type, id });
+  }
+
+  const handleDragLeave = (e) => {
+      e.preventDefault();
+      setDragOverTarget(null);
+  }
+
+  const handleDrop = (e, targetType, targetId, targetPayload) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOverTarget(null);
+      if (!dragItem) return;
+
+      const { type: dType, id: dId, payload: dPayload } = dragItem;
+      if (dId === targetId && dType === targetType) return; // 제자리 드롭 무시
+
+      // 1. 카드 정렬 (카드 -> 카드)
+      if (dType === 'card' && targetType === 'card') {
+          if (moveCard) moveCard(dId, targetId);
+      }
+      // 2. 카드 이동 (카드 -> 단원 폴더)
+      else if (dType === 'card' && targetType === 'part') {
+          updateCard(dId, { part: targetId, subject: currentSubject });
+          showToast(`✓ 카드가 '${targetId}' 단원으로 쏙 들어갔습니다.`, '#22c55e');
+      }
+      // 3. 카드 이동 (카드 -> 과목 폴더)
+      else if (dType === 'card' && targetType === 'subject') {
+          updateCard(dId, { subject: targetId, part: '' });
+          showToast(`✓ 카드가 '${targetId}' 과목으로 쏙 들어갔습니다.`, '#22c55e');
+      }
+      // 4. 단원 정렬 (단원 -> 단원)
+      else if (dType === 'part' && targetType === 'part') {
           setCustomPartOrder(prev => {
               const arr = [...sortedParts];
-              const idx = arr.indexOf(name);
-              if (idx < arr.length - 1) {
-                  [arr[idx], arr[idx+1]] = [arr[idx+1], arr[idx]];
-                  const next = { ...prev, [currentSubject]: arr };
-                  localStorage.setItem('domun_part_order', JSON.stringify(next));
-                  return next;
-              }
-              return prev;
+              const dIdx = arr.indexOf(dId);
+              const tIdx = arr.indexOf(targetId);
+              arr.splice(dIdx, 1);
+              arr.splice(tIdx, 0, dId);
+              const next = { ...prev, [currentSubject]: arr };
+              localStorage.setItem('domun_part_order', JSON.stringify(next));
+              return next;
           });
       }
+      // 5. 과목 정렬 (과목 -> 과목)
+      else if (dType === 'subject' && targetType === 'subject') {
+          setCustomSubjOrder(prev => {
+              const arr = [...sortedSubjects];
+              const dIdx = arr.indexOf(dId);
+              const tIdx = arr.indexOf(targetId);
+              arr.splice(dIdx, 1);
+              arr.splice(tIdx, 0, dId);
+              localStorage.setItem('domun_subj_order', JSON.stringify(arr));
+              return arr;
+          });
+      }
+      // 6. 단원 전체 이동 (단원 -> 과목 폴더)
+      else if (dType === 'part' && targetType === 'subject') {
+          if (currentSubject === targetId) return;
+          let count = 0;
+          userCards.forEach(c => {
+              if (safeStr(c.subject) === safeStr(currentSubject) && safeStr(c.part) === safeStr(dId)) {
+                  updateCard(c.id, { subject: targetId });
+                  count++;
+              }
+          });
+          // 이동 후 기존 과목의 custom order에서 단원 제거, 새 과목에 추가
+          setCustomPartOrder(prev => {
+              const oldArr = (prev[currentSubject] || []).filter(p => p !== dId);
+              const newArr = [...(prev[targetId] || []), dId];
+              const next = { ...prev, [currentSubject]: oldArr, [targetId]: newArr };
+              localStorage.setItem('domun_part_order', JSON.stringify(next));
+              return next;
+          });
+          showToast(`✓ '${dId}' 단원이 '${targetId}' 과목으로 통째로 이사했습니다.`, '#22c55e');
+      }
+
+      setDragItem(null);
   }
+
+  const handleDragEnd = () => {
+      setDragItem(null);
+      setDragOverTarget(null);
+  }
+
 
   // --- 기타 기능 핸들러 ---
   const handleImport = async (e) => {
@@ -513,6 +453,7 @@ export default function ManagePage({ cards }) {
       }
     })
 
+    // Custom Order 배열에서도 이름 변경
     if (type === 'subject') {
         setCustomSubjOrder(prev => prev.map(s => s === oldName ? newName.trim() : s));
         if (navPath.length > 0 && safeStr(navPath[0]) === safeStr(oldName)) {
@@ -530,29 +471,6 @@ export default function ManagePage({ cards }) {
 
     setRenameTarget(null)
     showToast(`✓ ${updatedCount}개 항목 이름 변경됨`, '#22c55e')
-  }
-
-  const handleMoveAction = (newSubj, newPart) => {
-    if (!moveTarget) return;
-
-    if (moveTarget.type === 'card') {
-      updateCard(moveTarget.card.id, { subject: newSubj, part: newPart });
-      showToast('✓ 카드가 성공적으로 이동되었습니다.', '#22c55e');
-    } else if (moveTarget.type === 'part') {
-      let count = 0;
-      userCards.forEach(c => {
-        if (safeStr(c.subject) === safeStr(moveTarget.subject) && safeStr(c.part) === safeStr(moveTarget.part)) {
-          updateCard(c.id, { subject: newSubj, part: newPart });
-          count++;
-        }
-      });
-      showToast(`✓ 단원 내 ${count}장 이동 완료`, '#22c55e');
-      
-      if (navPath.length === 2 && safeStr(navPath[0]) === safeStr(moveTarget.subject) && safeStr(navPath[1]) === safeStr(moveTarget.part)) {
-        setNavPath([newSubj, newPart].filter(Boolean));
-      }
-    }
-    setMoveTarget(null);
   }
 
   const confirmDelete = () => {
@@ -590,25 +508,34 @@ export default function ManagePage({ cards }) {
   }
 
   // 📂 렌더링 헬퍼
-  const renderFolder = (type, title, count, onOpen, onRename, onDelete, onMove, onMoveUp, onMoveDown, isFirst, isLast) => {
+  const renderFolder = (type, title, count, onOpen, onRename, onDelete) => {
+      const isDragOver = dragOverTarget?.id === title && dragOverTarget?.type === type;
+      const isDragged = dragItem?.id === title && dragItem?.type === type;
+
       return (
-        <div key={title} style={S.folderCard}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div onClick={onOpen} style={{ cursor: 'pointer', flex: 1 }}>
-              <div style={{...S.folderIcon, opacity: count===0 ? 0.4 : 1}}>{type === 'subject' ? '📁' : '📂'}</div>
-              <div style={S.folderTitle}>{displayStr(title)}</div>
-              <div style={S.folderCount}>카드 {count}장</div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
-              <button disabled={isFirst} onClick={(e) => { e.stopPropagation(); onMoveUp(); }} style={{ background: 'none', border: 'none', color: isFirst ? '#1e293b' : '#94a3b8', cursor: isFirst ? 'default' : 'pointer', fontSize: 18, padding: 0 }}>▲</button>
-              <button disabled={isLast} onClick={(e) => { e.stopPropagation(); onMoveDown(); }} style={{ background: 'none', border: 'none', color: isLast ? '#1e293b' : '#94a3b8', cursor: isLast ? 'default' : 'pointer', fontSize: 18, padding: 0 }}>▼</button>
-            </div>
+        <div
+            key={title}
+            draggable
+            onDragStart={(e) => handleDragStart(e, type, title, title)}
+            onDragOver={(e) => handleDragOver(e, type, title)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, type, title, title)}
+            onDragEnd={handleDragEnd}
+            style={{
+                ...S.folderCard,
+                opacity: isDragged ? 0.4 : 1,
+                border: isDragOver ? '2px dashed #38bdf8' : '1px solid #334155',
+                transform: isDragOver ? 'scale(1.03)' : 'scale(1)',
+                cursor: 'grab'
+            }}
+        >
+          <div onClick={onOpen} style={{ cursor: 'pointer', flex: 1, pointerEvents: isDragged ? 'none' : 'auto' }}>
+            <div style={{...S.folderIcon, opacity: count===0 ? 0.4 : 1}}>{type === 'subject' ? '📁' : '📂'}</div>
+            <div style={S.folderTitle}>{displayStr(title)}</div>
+            <div style={S.folderCount}>카드 {count}장</div>
           </div>
           <div style={S.folderActions}>
             <button onClick={(e) => { e.stopPropagation(); onRename(); }} style={S.actionBtn('edit')}>✎ 이름</button>
-            {type === 'part' && (
-              <button onClick={(e) => { e.stopPropagation(); onMove(); }} style={S.actionBtn('move')}>🚀 이동</button>
-            )}
             <button onClick={(e) => { e.stopPropagation(); onDelete(); }} style={S.actionBtn('delete')}>🗑 삭제</button>
           </div>
         </div>
@@ -624,19 +551,32 @@ export default function ManagePage({ cards }) {
     transition: 'color 0.2s',
   })
 
-  // 📝 개별 카드 렌더링 래퍼
-  const renderCardWrapper = (card, idx, arr) => {
+  // 📝 개별 카드 렌더링 래퍼 (드래그 앤 드롭 지원)
+  const renderCardWrapper = (card) => {
+    const isDragOver = dragOverTarget?.id === card.id && dragOverTarget?.type === 'card';
+    const isDragged = dragItem?.id === card.id && dragItem?.type === 'card';
+    
     return (
-        <div key={card.id}>
+        <div
+            key={card.id}
+            draggable
+            onDragStart={(e) => handleDragStart(e, 'card', card.id, card)}
+            onDragOver={(e) => handleDragOver(e, 'card', card.id)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, 'card', card.id, card)}
+            onDragEnd={handleDragEnd}
+            style={{
+                opacity: isDragged ? 0.3 : 1,
+                boxShadow: isDragOver ? '0 0 0 2px #38bdf8' : 'none',
+                borderRadius: 12,
+                transition: 'all 0.2s ease',
+                cursor: 'grab'
+            }}
+        >
             <EditableCard
               card={card}
               onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
               onDelete={() => deleteCard(card.id)}
-              onMove={() => setMoveTarget({ type: 'card', card })}
-              onMoveUp={() => moveCard(card.id, arr[idx - 1].id)}
-              onMoveDown={() => moveCard(card.id, arr[idx + 1].id)}
-              isFirst={idx === 0}
-              isLast={idx === arr.length - 1}
               subjects={cards?.subjects || []} getParts={cards?.parts}
             />
         </div>
@@ -649,13 +589,6 @@ export default function ManagePage({ cards }) {
       <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>카드를 내보내거나 가져오고, 링크로 공유할 수 있습니다</p>
 
       {/* 모달 렌더링 */}
-      {createModalTarget && (
-        <CreateFolderModal 
-          type={createModalTarget} 
-          onSave={handleCreateFolder} 
-          onClose={() => setCreateModalTarget(null)} 
-        />
-      )}
       {renameTarget && (
         <RenameModal 
           oldName={renameTarget.oldName} 
@@ -670,15 +603,6 @@ export default function ManagePage({ cards }) {
           count={userCards.filter(c => safeStr(c.subject) === safeStr(delTarget.subject) && (delTarget.part === null || safeStr(c.part) === safeStr(delTarget.part))).length}
           onConfirm={confirmDelete}
           onClose={() => setDelTarget(null)}
-        />
-      )}
-      {moveTarget && (
-        <MoveModal
-          target={moveTarget}
-          onSave={handleMoveAction}
-          onClose={() => setMoveTarget(null)}
-          subjects={cards?.subjects || []}
-          getParts={cards?.parts}
         />
       )}
 
@@ -730,17 +654,17 @@ export default function ManagePage({ cards }) {
 
       <hr style={{ border: 0, borderTop: '1px dashed #1e293b', margin: '32px 0 24px' }} />
 
-      {/* 📁 폴더 탐색기 UI */}
+      {/* 📁 폴더 탐색기 UI + Drag and Drop */}
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 800 }}>내 저장소</div>
-            {navPath.length === 0 && <button onClick={() => setCreateModalTarget('subject')} style={{...S.btn('primary'), flexShrink: 0}}>+ 새 과목 만들기</button>}
-            {navPath.length === 1 && <button onClick={() => setCreateModalTarget('part')} style={{...S.btn('primary'), flexShrink: 0}}>+ 새 단원 만들기</button>}
+            {navPath.length === 0 && <button onClick={handleCreateSubject} style={S.btn('primary')}>+ 새 과목 만들기</button>}
+            {navPath.length === 1 && <button onClick={handleCreatePart} style={S.btn('primary')}>+ 새 단원 만들기</button>}
         </div>
 
         {/* 안내 문구 */}
         <div style={{ color: '#64748b', fontSize: 12, marginBottom: 16, background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.2)', padding: '10px 14px', borderRadius: 10 }}>
-            💡 <b>정렬 및 이동:</b> 각 항목의 ▲/▼ 버튼으로 순서를 바꾸고, 🚀 버튼을 눌러 다른 위치로 옮길 수 있습니다.
+            💡 <b>Drag & Drop:</b> 폴더나 카드를 길게 꾹 눌러서 끌어다 놓으세요! 순서 정렬과 폴더 이동이 모두 가능합니다.
         </div>
 
         {/* 상단 경로 (Breadcrumbs) */}
@@ -775,16 +699,12 @@ export default function ManagePage({ cards }) {
         {navPath.length === 0 && (
           sortedSubjects.length === 0 ? <div style={S.empty}>저장소에 생성된 과목이 없습니다.</div> :
           <div style={S.folderGrid}>
-            {sortedSubjects.map((subj, idx, arr) => {
+            {sortedSubjects.map(subj => {
               const count = userCards.filter(c => safeStr(c.subject) === subj).length;
               return renderFolder('subject', subj, count,
                 () => setNavPath([subj]),
                 () => setRenameTarget({ type: 'subject', oldName: subj }),
-                () => setDelTarget({ subject: subj, part: null }),
-                null,
-                () => moveFolderUp('subject', subj),
-                () => moveFolderDown('subject', subj),
-                idx === 0, idx === arr.length - 1
+                () => setDelTarget({ subject: subj, part: null })
               )
             })}
           </div>
@@ -795,16 +715,12 @@ export default function ManagePage({ cards }) {
           <div>
             {sortedParts.length > 0 && (
               <div style={S.folderGrid}>
-                {sortedParts.map((part, idx, arr) => {
+                {sortedParts.map(part => {
                   const count = currentSubjectCards.filter(c => safeStr(c.part) === part).length;
                   return renderFolder('part', part, count,
                     () => setNavPath([currentSubject, part]),
                     () => setRenameTarget({ type: 'part', oldName: part, subjectContext: currentSubject }),
-                    () => setDelTarget({ subject: currentSubject, part: part }),
-                    () => setMoveTarget({ type: 'part', subject: currentSubject, part: part }),
-                    () => moveFolderUp('part', part),
-                    () => moveFolderDown('part', part),
-                    idx === 0, idx === arr.length - 1
+                    () => setDelTarget({ subject: currentSubject, part: part })
                   )
                 })}
               </div>
@@ -847,7 +763,7 @@ export default function ManagePage({ cards }) {
   )
 }
 
-function EditableCard({ card, onSave, onDelete, onMove, onMoveUp, onMoveDown, isFirst, isLast, subjects = [], getParts }) {
+function EditableCard({ card, onSave, onDelete, subjects = [], getParts }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
   const isQA = !card.mnemonic && card.answer != null
@@ -916,23 +832,21 @@ function EditableCard({ card, onSave, onDelete, onMove, onMoveUp, onMoveDown, is
 
   return (
     <div style={S.item}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginRight: 4, gap: 8 }}>
-        <button disabled={isFirst} onClick={onMoveUp} style={{ background: 'none', border: 'none', color: isFirst ? '#1e293b' : '#94a3b8', cursor: isFirst ? 'default' : 'pointer', fontSize: 18, padding: 0 }}>▲</button>
-        <button disabled={isLast} onClick={onMoveDown} style={{ background: 'none', border: 'none', color: isLast ? '#1e293b' : '#94a3b8', cursor: isLast ? 'default' : 'pointer', fontSize: 18, padding: 0 }}>▼</button>
+      <div style={{ display: 'flex', alignItems: 'center', justify-content: 'center', cursor: 'grab', marginRight: 4, color: '#475569' }}>
+          ⠿
       </div>
-      <div style={{ flex: 1, minWidth: 0, paddingLeft: 4 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}>
           <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.subject || '미분류'}</span>
           <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.part || '미분류'}</span>
         </div>
-        <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
+        <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2, overflowWrap: 'break-word' }}>{card.question}</div>
         {isQA
-          ? <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{card.answer}</div>
+          ? <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5, overflowWrap: 'break-word' }}>{card.answer}</div>
           : <div style={{ color: '#818cf8', fontSize: 13, fontWeight: 700 }}>{card.mnemonic}</div>}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <button style={{ ...S.del, color: '#475569', fontSize: 14 }} onClick={(e) => { e.stopPropagation(); setDraft(card); setEditing(true) }} title="편집">✎</button>
-        <button style={{ ...S.del, color: '#38bdf8', fontSize: 14 }} onClick={(e) => { e.stopPropagation(); onMove() }} title="이동">🚀</button>
         <button style={S.del} onClick={(e) => { e.stopPropagation(); onDelete() }} title="삭제">✕</button>
       </div>
     </div>
