@@ -84,9 +84,11 @@ const S = {
     display: 'flex', gap: 6, marginTop: 14, paddingTop: 14,
     borderTop: '1px solid rgba(255,255,255,0.05)'
   },
-  actionBtn: (isRed) => ({
-    flex: 1, background: isRed ? 'rgba(239,68,68,0.1)' : 'rgba(99,102,241,0.1)',
-    color: isRed ? '#f87171' : '#818cf8', border: 'none', borderRadius: 8,
+  actionBtn: (type) => ({
+    flex: 1, 
+    background: type === 'delete' ? 'rgba(239,68,68,0.1)' : type === 'move' ? 'rgba(56,189,248,0.1)' : 'rgba(99,102,241,0.1)',
+    color: type === 'delete' ? '#f87171' : type === 'move' ? '#38bdf8' : '#818cf8', 
+    border: 'none', borderRadius: 8,
     padding: '7px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer'
   })
 }
@@ -107,6 +109,73 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
           <option key={i} value={opt != null ? String(opt) : ''} />
         ))}
       </datalist>
+    </div>
+  )
+}
+
+function MoveModal({ target, onSave, onClose, subjects, getParts }) {
+  const isCard = target.type === 'card';
+  const initialSubj = isCard ? target.card.subject : target.subject;
+  const initialPart = isCard ? target.card.part : target.part;
+  
+  const [newSubj, setNewSubj] = useState(initialSubj || '');
+  const [newPart, setNewPart] = useState(initialPart || '');
+
+  const safeSubjects = Array.isArray(subjects) ? subjects : [];
+  let safeParts = [];
+  try {
+    if (typeof getParts === 'function') {
+      const partsResult = getParts(newSubj);
+      if (Array.isArray(partsResult)) safeParts = partsResult;
+    }
+  } catch(e) {}
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box', background: '#0a0f1e',
+    border: '1px solid #38bdf8', borderRadius: 8, padding: '12px 14px',
+    color: '#e2e8f0', fontSize: 14, outline: 'none'
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(2px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: 20
+    }} onClick={onClose}>
+      <div style={{
+        background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360,
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 800, marginBottom: 12 }}>🚀 위치 이동</div>
+        <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>
+          {isCard ? '이 카드를' : <span><strong style={{color:'#38bdf8'}}>{initialPart}</strong> 단원 전체를</span>} 어디로 이동할까요? <br/>
+          (목록에 없는 새 이름을 입력하면 폴더가 생성됩니다.)
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>이동할 과목 (상위 폴더)</div>
+          <DataListInput
+            id="move-modal-subj" value={newSubj}
+            onChange={(e) => setNewSubj(e.target.value)}
+            placeholder="과목명 입력" style={inputStyle} options={safeSubjects}
+          />
+        </div>
+        
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>이동할 단원 (하위 폴더)</div>
+          <DataListInput
+            id="move-modal-part" value={newPart}
+            onChange={(e) => setNewPart(e.target.value)}
+            placeholder="단원명 입력" style={inputStyle} options={safeParts}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={{ ...S.btn('primary'), flex: 1, background: 'linear-gradient(135deg,#0284c7,#38bdf8)' }} 
+                  onClick={() => onSave(newSubj.trim(), newPart.trim())}>
+            이동하기
+          </button>
+          <button style={{ ...S.btn('default'), flex: 1 }} onClick={onClose}>취소</button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -197,6 +266,7 @@ export default function ManagePage({ cards }) {
   // 모달 상태
   const [renameTarget, setRenameTarget] = useState(null) 
   const [delTarget, setDelTarget] = useState(null)
+  const [moveTarget, setMoveTarget] = useState(null)
 
   const showToast = (msg, color = '#6366f1') => {
     setToast({ msg, color })
@@ -308,6 +378,30 @@ export default function ManagePage({ cards }) {
     showToast(`✓ ${updatedCount}개 항목 이름 변경됨`, '#22c55e')
   }
 
+  const handleMoveAction = (newSubj, newPart) => {
+    if (!moveTarget) return;
+
+    if (moveTarget.type === 'card') {
+      updateCard(moveTarget.card.id, { subject: newSubj, part: newPart });
+      showToast('✓ 카드가 성공적으로 이동되었습니다.', '#22c55e');
+    } else if (moveTarget.type === 'part') {
+      let count = 0;
+      userCards.forEach(c => {
+        if (safeStr(c.subject) === safeStr(moveTarget.subject) && safeStr(c.part) === safeStr(moveTarget.part)) {
+          updateCard(c.id, { subject: newSubj, part: newPart });
+          count++;
+        }
+      });
+      showToast(`✓ 단원 내 ${count}장 이동 완료`, '#22c55e');
+      
+      // 현재 보고 있던 단원을 이동시켰다면, 이동한 경로로 따라가기
+      if (navPath.length === 2 && safeStr(navPath[0]) === safeStr(moveTarget.subject) && safeStr(navPath[1]) === safeStr(moveTarget.part)) {
+        setNavPath([newSubj, newPart].filter(Boolean));
+      }
+    }
+    setMoveTarget(null);
+  }
+
   const confirmDelete = () => {
     if (!delTarget) return;
     const { subject, part } = delTarget;
@@ -332,7 +426,7 @@ export default function ManagePage({ cards }) {
   }
 
   // 렌더링 헬퍼
-  const renderFolder = (type, title, count, onOpen, onRename, onDelete) => (
+  const renderFolder = (type, title, count, onOpen, onRename, onDelete, onMove) => (
     <div key={title} style={S.folderCard}>
       <div onClick={onOpen} style={{ cursor: 'pointer', flex: 1 }}>
         <div style={S.folderIcon}>{type === 'subject' ? '📁' : '📂'}</div>
@@ -340,8 +434,11 @@ export default function ManagePage({ cards }) {
         <div style={S.folderCount}>카드 {count}장</div>
       </div>
       <div style={S.folderActions}>
-        <button onClick={(e) => { e.stopPropagation(); onRename(); }} style={S.actionBtn(false)}>✎ 이름</button>
-        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} style={S.actionBtn(true)}>🗑 삭제</button>
+        <button onClick={(e) => { e.stopPropagation(); onRename(); }} style={S.actionBtn('edit')}>✎ 이름</button>
+        {type === 'part' && (
+          <button onClick={(e) => { e.stopPropagation(); onMove(); }} style={S.actionBtn('move')}>🚀 이동</button>
+        )}
+        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} style={S.actionBtn('delete')}>🗑 삭제</button>
       </div>
     </div>
   )
@@ -375,6 +472,15 @@ export default function ManagePage({ cards }) {
           count={userCards.filter(c => safeStr(c.subject) === safeStr(delTarget.subject) && (delTarget.part === null || safeStr(c.part) === safeStr(delTarget.part))).length}
           onConfirm={confirmDelete}
           onClose={() => setDelTarget(null)}
+        />
+      )}
+      {moveTarget && (
+        <MoveModal
+          target={moveTarget}
+          onSave={handleMoveAction}
+          onClose={() => setMoveTarget(null)}
+          subjects={cards?.subjects || []}
+          getParts={cards?.parts}
         />
       )}
 
@@ -483,7 +589,8 @@ export default function ManagePage({ cards }) {
                   return renderFolder('part', part, count,
                     () => setNavPath([currentSubject, part]),
                     () => setRenameTarget({ type: 'part', oldName: part, subjectContext: currentSubject }),
-                    () => setDelTarget({ subject: currentSubject, part: part })
+                    () => setDelTarget({ subject: currentSubject, part: part }),
+                    () => setMoveTarget({ type: 'part', subject: currentSubject, part: part })
                   )
                 })}
               </div>
@@ -499,6 +606,7 @@ export default function ManagePage({ cards }) {
                       key={card.id} card={card}
                       onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
                       onDelete={() => deleteCard(card.id)}
+                      onMove={() => setMoveTarget({ type: 'card', card })}
                       subjects={cards?.subjects || []} getParts={cards?.parts}
                     />
                   ))}
@@ -525,6 +633,7 @@ export default function ManagePage({ cards }) {
                     key={card.id} card={card}
                     onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
                     onDelete={() => deleteCard(card.id)}
+                    onMove={() => setMoveTarget({ type: 'card', card })}
                     subjects={cards?.subjects || []} getParts={cards?.parts}
                   />
                 ))}
@@ -540,7 +649,7 @@ export default function ManagePage({ cards }) {
   )
 }
 
-function EditableCard({ card, onSave, onDelete, subjects = [], getParts }) {
+function EditableCard({ card, onSave, onDelete, onMove, subjects = [], getParts }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
   const isQA = !card.mnemonic && card.answer != null
@@ -619,12 +728,11 @@ function EditableCard({ card, onSave, onDelete, subjects = [], getParts }) {
           ? <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{card.answer}</div>
           : <div style={{ color: '#818cf8', fontSize: 13, fontWeight: 700 }}>{card.mnemonic}</div>}
       </div>
-      <button
-        style={{ ...S.del, color: '#475569', fontSize: 14 }}
-        onClick={() => { setDraft(card); setEditing(true) }}
-        title="편집"
-      >✎</button>
-      <button style={S.del} onClick={onDelete} title="삭제">✕</button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <button style={{ ...S.del, color: '#475569', fontSize: 14 }} onClick={() => { setDraft(card); setEditing(true) }} title="편집">✎</button>
+        <button style={{ ...S.del, color: '#38bdf8', fontSize: 14 }} onClick={onMove} title="이동">🚀</button>
+        <button style={S.del} onClick={onDelete} title="삭제">✕</button>
+      </div>
     </div>
   )
 }
