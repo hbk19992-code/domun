@@ -30,7 +30,7 @@ const S = {
     borderRadius: 10, padding: '10px 24px', fontSize: 14, fontWeight: 600,
     zIndex: 9999, pointerEvents: 'none', whiteSpace: 'nowrap', color: '#fff',
   },
-  empty: { color: '#334155', textAlign: 'center', padding: '40px 0', fontSize: 14 },
+  empty: { color: '#475569', textAlign: 'center', padding: '60px 0', fontSize: 14, background: 'rgba(15,23,42,0.4)', borderRadius: 16, border: '1px dashed #334155' },
   stat: {
     background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
     borderRadius: 12, padding: '16px 20px', marginBottom: 24,
@@ -61,6 +61,34 @@ const S = {
     borderRadius: 8, padding: '9px 16px', fontSize: 13,
     cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
   }),
+  folderGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+    gap: 12,
+    marginBottom: 20
+  },
+  folderCard: {
+    background: 'linear-gradient(145deg, rgba(30,41,59,0.8), rgba(15,23,42,0.8))',
+    border: '1px solid #334155',
+    borderRadius: 16,
+    padding: '16px 14px',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    transition: 'all 0.2s ease',
+  },
+  folderIcon: { fontSize: 36, marginBottom: 10, lineHeight: 1 },
+  folderTitle: { color: '#f8fafc', fontSize: 14, fontWeight: 700, marginBottom: 4, wordBreak: 'keep-all', lineHeight: 1.3 },
+  folderCount: { color: '#64748b', fontSize: 11, fontWeight: 500 },
+  folderActions: {
+    display: 'flex', gap: 6, marginTop: 14, paddingTop: 14,
+    borderTop: '1px solid rgba(255,255,255,0.05)'
+  },
+  actionBtn: (isRed) => ({
+    flex: 1, background: isRed ? 'rgba(239,68,68,0.1)' : 'rgba(99,102,241,0.1)',
+    color: isRed ? '#f87171' : '#818cf8', border: 'none', borderRadius: 8,
+    padding: '7px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+  })
 }
 
 function DataListInput({ id, value, onChange, placeholder, style, options }) {
@@ -85,19 +113,20 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
 
 function RenameModal({ oldName, type, onSave, onClose, isSubject }) {
   const [newName, setNewName] = useState(oldName)
+  const displayOld = (!oldName || oldName === '') ? '미분류' : oldName;
   return (
     <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(2px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: 20
     }} onClick={onClose}>
       <div style={{
         background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: 24, width: '100%', maxWidth: 340,
       }} onClick={e => e.stopPropagation()}>
         <div style={{ color: '#e2e8f0', fontSize: 16, fontWeight: 700, marginBottom: 16 }}>
-          {isSubject ? '과목명 일괄 변경' : '단원명 일괄 변경'}
+          {isSubject ? '과목명 수정' : '단원명 수정'}
         </div>
         <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 12 }}>
-          기존: <span style={{ color: '#f87171' }}>{oldName}</span>
+          기존: <span style={{ color: '#f87171' }}>{displayOld}</span>
         </div>
         <input 
           autoFocus
@@ -120,39 +149,76 @@ function RenameModal({ oldName, type, onSave, onClose, isSubject }) {
   )
 }
 
+function DeleteModal({ target, count, onConfirm, onClose }) {
+  const isSubj = target.part === null;
+  const name = isSubj ? target.subject : target.part;
+  const displayName = (!name || name === '') ? '미분류' : name;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(2px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: 20
+    }} onClick={onClose}>
+      <div style={{
+        background: '#0f172a', border: '1px solid #ef4444', borderRadius: 16, padding: 24, width: '100%', maxWidth: 340,
+        boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.2)'
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
+        <div style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 800, marginBottom: 8 }}>
+          {isSubj ? '과목 삭제' : '단원 삭제'}
+        </div>
+        <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>
+          <strong style={{color: '#fca5a5'}}>{displayName}</strong> {isSubj ? '과목' : '단원'}에 포함된 <br/>
+          <strong style={{color: '#fff'}}>카드 {count}장</strong>이 모두 삭제됩니다. <br/>
+          삭제한 카드는 복구할 수 없습니다. 계속하시겠습니까?
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onConfirm} style={{ ...S.btn('danger'), flex: 1 }}>삭제하기</button>
+          <button onClick={onClose} style={{ ...S.btn('default'), flex: 1 }}>취소</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ManagePage({ cards }) {
-  const { allCards, userCards, builtinCards, deleteCard, updateCard, deleteBy, countBy, exportJSON, importJSON, deduplicateSelf, duplicateCount } = cards
+  const { allCards, userCards, builtinCards, deleteCard, updateCard, exportJSON, importJSON, deduplicateSelf, duplicateCount } = cards
   const fileRef = useRef(null)
   const [toast, setToast] = useState(null)
   const [shareUrl, setShareUrl] = useState('')
-  const [shareScope, setShareScope] = useState('all') // all | user
+  const [shareScope, setShareScope] = useState('all') 
   const [sharing, setSharing] = useState(false)
   const [copied, setCopied] = useState(false)
   
-  // 삭제용 상태
-  const [delSubject, setDelSubject] = useState('전체')
-  const [delPart, setDelPart] = useState('전체')
-  const [confirmDel, setConfirmDel] = useState(false)
+  // 탐색기 상태 (Breadcrumbs)
+  const [navPath, setNavPath] = useState([]) 
+  const currentSubject = navPath[0] ?? null
+  const currentPart = navPath[1] ?? null
 
-  // 이름 일괄 변경용 상태
-  const [renameTarget, setRenameTarget] = useState(null)
-  const [renameSubjFilter, setRenameSubjFilter] = useState('전체')
-
-  const userSubjects = useMemo(() => [...new Set(userCards.map((c) => c.subject))], [userCards])
-  const userParts = useMemo(() => delSubject === '전체'
-    ? [...new Set(userCards.map((c) => c.part))]
-    : [...new Set(userCards.filter((c) => c.subject === delSubject).map((c) => c.part))], [userCards, delSubject])
-  const delCount = countBy({ subject: delSubject, part: delPart })
-
-  const renamePartsList = useMemo(() => renameSubjFilter === '전체'
-    ? [...new Set(userCards.map((c) => c.part))]
-    : [...new Set(userCards.filter((c) => c.subject === renameSubjFilter).map((c) => c.part))], [userCards, renameSubjFilter])
+  // 모달 상태
+  const [renameTarget, setRenameTarget] = useState(null) 
+  const [delTarget, setDelTarget] = useState(null)
 
   const showToast = (msg, color = '#6366f1') => {
     setToast({ msg, color })
     setTimeout(() => setToast(null), 2500)
   }
 
+  // 헬퍼 함수
+  const safeStr = (s) => (s || '').trim()
+  const displayStr = (s) => (!s || s.trim() === '') ? '미분류' : s
+
+  // 데이터 파싱
+  const rootFolders = useMemo(() => [...new Set(userCards.map(c => safeStr(c.subject)))], [userCards])
+  const currentSubjectCards = useMemo(() => userCards.filter(c => safeStr(c.subject) === safeStr(currentSubject)), [userCards, currentSubject])
+  
+  const subjectFolders = useMemo(() => {
+    return [...new Set(currentSubjectCards.map(c => safeStr(c.part)))].filter(p => p !== '')
+  }, [currentSubjectCards])
+  
+  const looseCardsInSubject = useMemo(() => currentSubjectCards.filter(c => safeStr(c.part) === ''), [currentSubjectCards])
+  const partCards = useMemo(() => currentSubjectCards.filter(c => safeStr(c.part) === safeStr(currentPart)), [currentSubjectCards, currentPart])
+
+  // 동작 핸들러
   const handleImport = async (e) => {
     const f = e.target.files[0]
     if (!f) return
@@ -170,48 +236,6 @@ export default function ManagePage({ cards }) {
     const removed = deduplicateSelf()
     if (removed > 0) showToast(`✓ 중복 ${removed}개 제거 완료`, '#22c55e')
     else showToast('중복 카드가 없습니다')
-  }
-
-  const handleBulkDelete = () => {
-    if (!confirmDel) { setConfirmDel(true); return }
-    const removed = deleteBy({ subject: delSubject, part: delPart })
-    showToast(removed > 0 ? `✓ ${removed}개 삭제됨` : '삭제할 카드가 없습니다', removed > 0 ? '#ef4444' : '#6366f1')
-    setConfirmDel(false)
-    setDelSubject('전체'); setDelPart('전체')
-  }
-
-  const handleRename = (newName) => {
-    if (!renameTarget || !newName.trim()) return
-    const { type, oldName, subjectContext } = renameTarget
-    let updatedCount = 0
-
-    userCards.forEach(card => {
-      let shouldUpdate = false;
-      const updates = {}
-      
-      if (type === 'subject' && card.subject === oldName) {
-        updates.subject = newName.trim()
-        shouldUpdate = true
-      } else if (type === 'part' && card.part === oldName) {
-        if (subjectContext && subjectContext !== '전체') {
-            if (card.subject === subjectContext) {
-                 updates.part = newName.trim()
-                 shouldUpdate = true
-            }
-        } else {
-             updates.part = newName.trim()
-             shouldUpdate = true
-        }
-      }
-
-      if (shouldUpdate) {
-        updateCard(card.id, updates)
-        updatedCount++
-      }
-    })
-
-    setRenameTarget(null)
-    showToast(`✓ ${updatedCount}개 항목 이름 변경됨`, '#22c55e')
   }
 
   const handleShare = async () => {
@@ -243,11 +267,100 @@ export default function ManagePage({ cards }) {
     }
   }
 
+  const handleRename = (newName) => {
+    if (!renameTarget || !newName.trim()) return
+    const { type, oldName, subjectContext } = renameTarget
+    let updatedCount = 0
+
+    userCards.forEach(card => {
+      let shouldUpdate = false;
+      const updates = {}
+      
+      if (type === 'subject' && safeStr(card.subject) === safeStr(oldName)) {
+        updates.subject = newName.trim()
+        shouldUpdate = true
+      } else if (type === 'part' && safeStr(card.part) === safeStr(oldName)) {
+        if (subjectContext !== undefined) {
+            if (safeStr(card.subject) === safeStr(subjectContext)) {
+                 updates.part = newName.trim()
+                 shouldUpdate = true
+            }
+        } else {
+             updates.part = newName.trim()
+             shouldUpdate = true
+        }
+      }
+
+      if (shouldUpdate) {
+        updateCard(card.id, updates)
+        updatedCount++
+      }
+    })
+
+    // 변경된 이름으로 경로 업데이트
+    if (type === 'subject' && navPath.length > 0 && safeStr(navPath[0]) === safeStr(oldName)) {
+       setNavPath([newName.trim(), navPath[1]].filter(Boolean))
+    } else if (type === 'part' && navPath.length > 1 && safeStr(navPath[1]) === safeStr(oldName)) {
+       setNavPath([navPath[0], newName.trim()])
+    }
+
+    setRenameTarget(null)
+    showToast(`✓ ${updatedCount}개 항목 이름 변경됨`, '#22c55e')
+  }
+
+  const confirmDelete = () => {
+    if (!delTarget) return;
+    const { subject, part } = delTarget;
+    
+    // 대상 카드 색출
+    const targetCards = userCards.filter(c =>
+      safeStr(c.subject) === safeStr(subject) &&
+      (part === null || safeStr(c.part) === safeStr(part))
+    );
+
+    // 삭제 실행 (deleteBy의 공백 버그를 피하기 위해 ID 기반 안전 삭제)
+    targetCards.forEach(c => deleteCard(c.id));
+    showToast(`✓ 카드 ${targetCards.length}장 삭제됨`, '#ef4444');
+    setDelTarget(null);
+
+    // 현재 보고 있던 폴더가 지워졌다면 상위로 이동
+    if (part !== null && safeStr(navPath[1]) === safeStr(part)) {
+      setNavPath([currentSubject]);
+    } else if (part === null && safeStr(navPath[0]) === safeStr(subject)) {
+      setNavPath([]);
+    }
+  }
+
+  // 렌더링 헬퍼
+  const renderFolder = (type, title, count, onOpen, onRename, onDelete) => (
+    <div key={title} style={S.folderCard}>
+      <div onClick={onOpen} style={{ cursor: 'pointer', flex: 1 }}>
+        <div style={S.folderIcon}>{type === 'subject' ? '📁' : '📂'}</div>
+        <div style={S.folderTitle}>{displayStr(title)}</div>
+        <div style={S.folderCount}>카드 {count}장</div>
+      </div>
+      <div style={S.folderActions}>
+        <button onClick={(e) => { e.stopPropagation(); onRename(); }} style={S.actionBtn(false)}>✎ 이름</button>
+        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} style={S.actionBtn(true)}>🗑 삭제</button>
+      </div>
+    </div>
+  )
+
+  const navCrumbStyle = (isActive) => ({
+    cursor: 'pointer',
+    color: isActive ? '#e2e8f0' : '#64748b',
+    fontWeight: isActive ? 800 : 600,
+    fontSize: 15,
+    display: 'flex', alignItems: 'center', gap: 6,
+    transition: 'color 0.2s'
+  })
+
   return (
     <div>
       <h2 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>카드 관리</h2>
       <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>카드를 내보내거나 가져오고, 링크로 공유할 수 있습니다</p>
 
+      {/* 모달 렌더링 */}
       {renameTarget && (
         <RenameModal 
           oldName={renameTarget.oldName} 
@@ -256,7 +369,16 @@ export default function ManagePage({ cards }) {
           onClose={() => setRenameTarget(null)} 
         />
       )}
+      {delTarget && (
+        <DeleteModal 
+          target={delTarget}
+          count={userCards.filter(c => safeStr(c.subject) === safeStr(delTarget.subject) && (delTarget.part === null || safeStr(c.part) === safeStr(delTarget.part))).length}
+          onConfirm={confirmDelete}
+          onClose={() => setDelTarget(null)}
+        />
+      )}
 
+      {/* 통계 및 유틸리티 영역 */}
       <div style={S.stat}>
         <div style={S.statItem}><div style={S.statNum()}>{allCards.length}</div><div style={S.statLabel}>전체 카드</div></div>
         <div style={S.statItem}><div style={S.statNum()}>{builtinCards.length}</div><div style={S.statLabel}>기본 카드</div></div>
@@ -294,9 +416,6 @@ export default function ManagePage({ cards }) {
             </button>
           </div>
         )}
-        <div style={{ color: '#334155', fontSize: 11, marginTop: 8 }}>
-          링크를 받은 사람이 열면 카드 가져오기 화면이 자동으로 뜹니다
-        </div>
       </div>
 
       <div style={S.row}>
@@ -305,117 +424,116 @@ export default function ManagePage({ cards }) {
         <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
       </div>
 
-      {userCards.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
-          
-          {/* 일괄 변경 영역 (깔끔하게 정돈됨) */}
-          <div style={{
-            background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.2)',
-            borderRadius: 14, padding: '20px 16px'
-          }}>
-            <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 700, marginBottom: 18 }}>✏ 과목·단원명 일괄 수정</div>
-            
-            {/* 과목 구역 */}
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 10 }}>📚 과목</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {userSubjects.map(s => (
-                  <button key={s} onClick={() => setRenameTarget({ type: 'subject', oldName: s })} 
-                    style={{ background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '7px 12px', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {s} <span style={{ color: '#818cf8', fontSize: 14 }}>✎</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+      <hr style={{ border: 0, borderTop: '1px dashed #1e293b', margin: '32px 0 24px' }} />
 
-            {/* 단원 구역 (스크롤 컨테이너 적용) */}
-            <div style={{ background: 'rgba(15,23,42,0.4)', borderRadius: 12, padding: 14, border: '1px solid #1e293b' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-                <div style={{ color: '#94a3b8', fontSize: 12 }}>📑 단원</div>
-                <select value={renameSubjFilter} onChange={(e) => setRenameSubjFilter(e.target.value)}
-                  style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '6px 10px', fontSize: 12, outline: 'none' }}>
-                  <option value="전체">전체 과목 보기</option>
-                  {userSubjects.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', maxHeight: 180, overflowY: 'auto', paddingRight: 4 }}>
-                {renamePartsList.length === 0 && <div style={{ color: '#475569', fontSize: 12, padding: '8px 0' }}>해당 단원이 없습니다.</div>}
-                {renamePartsList.map(p => (
-                  <button key={p} onClick={() => setRenameTarget({ type: 'part', oldName: p, subjectContext: renameSubjFilter })} 
-                    style={{ background: '#0f172a', border: '1px solid #334155', color: '#cbd5e1', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {p} <span style={{ color: '#6366f1', fontSize: 13 }}>✎</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+      {/* 📁 폴더 탐색기 UI */}
+      <div>
+        <div style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 800, marginBottom: 16 }}>내 저장소</div>
+
+        {/* 상단 경로 (Breadcrumbs) */}
+        <div style={{ 
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap',
+          background: 'rgba(15,23,42,0.6)', padding: '12px 18px', borderRadius: 12, border: '1px solid #1e293b' 
+        }}>
+          <div onClick={() => setNavPath([])} style={navCrumbStyle(navPath.length === 0)}>
+            <span style={{fontSize:18, marginBottom: 2}}>🏠</span> <span style={{paddingTop: 1}}>전체 과목</span>
           </div>
 
-          {/* 일괄 삭제 영역 */}
-          <div style={{
-            background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)',
-            borderRadius: 14, padding: '20px 16px'
-          }}>
-            <div style={{ color: '#ef4444', fontSize: 15, fontWeight: 700, marginBottom: 14 }}>🗑 단원·과목별 일괄 삭제</div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <select
-                value={delSubject}
-                onChange={(e) => { setDelSubject(e.target.value); setDelPart('전체'); setConfirmDel(false) }}
-                style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '8px 10px', fontSize: 13, cursor: 'pointer' }}
-              >
-                <option value="전체">과목 전체</option>
-                {userSubjects.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select
-                value={delPart}
-                onChange={(e) => { setDelPart(e.target.value); setConfirmDel(false) }}
-                style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '8px 10px', fontSize: 13, cursor: 'pointer' }}
-              >
-                <option value="전체">단원 전체</option>
-                {userParts.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-              <button
-                style={S.btn('danger', delCount === 0)}
-                disabled={delCount === 0}
-                onClick={handleBulkDelete}
-              >
-                {confirmDel ? `정말 삭제? (${delCount}개)` : `삭제 (${delCount}개)`}
-              </button>
-              {confirmDel && (
-                <button
-                  style={{ background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer' }}
-                  onClick={() => setConfirmDel(false)}
-                >취소</button>
-              )}
-            </div>
-            <div style={{ color: '#334155', fontSize: 11, marginTop: 10 }}>
-              {delSubject === '전체' && delPart === '전체'
-                ? '과목·단원을 선택하면 해당 범위만 삭제됩니다'
-                : `삭제 대상: ${delSubject === '전체' ? '전 과목' : delSubject}${delPart !== '전체' ? ` · ${delPart}` : ''}`}
-            </div>
-          </div>
+          {navPath.length > 0 && (
+            <>
+              <div style={{ color: '#334155', fontWeight: 800 }}>›</div>
+              <div onClick={() => setNavPath([currentSubject])} style={navCrumbStyle(navPath.length === 1)}>
+                <span style={{fontSize:18, marginBottom: 2}}>📁</span> <span style={{paddingTop: 1}}>{displayStr(currentSubject)}</span>
+              </div>
+            </>
+          )}
 
+          {navPath.length > 1 && (
+            <>
+              <div style={{ color: '#334155', fontWeight: 800 }}>›</div>
+              <div style={navCrumbStyle(true)}>
+                <span style={{fontSize:18, marginBottom: 2}}>📄</span> <span style={{paddingTop: 1}}>{displayStr(currentPart)}</span>
+              </div>
+            </>
+          )}
         </div>
-      )}
 
-      <div style={{ color: '#64748b', fontSize: 13, marginBottom: 12 }}>내 카드 ({userCards.length}개)</div>
-      {userCards.length === 0
-        ? <div style={S.empty}>추가한 카드가 없습니다</div>
-        : (
-          <div style={S.list}>
-            {userCards.map((card) => (
-              <EditableCard
-                key={card.id}
-                card={card}
-                onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
-                onDelete={() => deleteCard(card.id)}
-                subjects={cards?.subjects || []}
-                getParts={cards?.parts}
-              />
-            ))}
+        {/* 루트 레벨 (전체 과목 목록) */}
+        {navPath.length === 0 && (
+          rootFolders.length === 0 ? <div style={S.empty}>저장소에 카드가 없습니다</div> :
+          <div style={S.folderGrid}>
+            {rootFolders.map(subj => {
+              const count = userCards.filter(c => safeStr(c.subject) === subj).length;
+              return renderFolder('subject', subj, count,
+                () => setNavPath([subj]),
+                () => setRenameTarget({ type: 'subject', oldName: subj }),
+                () => setDelTarget({ subject: subj, part: null })
+              )
+            })}
           </div>
-        )
-      }
+        )}
+
+        {/* 과목 레벨 (단원 목록 및 소속 카드) */}
+        {navPath.length === 1 && (
+          <div>
+            {subjectFolders.length > 0 && (
+              <div style={S.folderGrid}>
+                {subjectFolders.map(part => {
+                  const count = currentSubjectCards.filter(c => safeStr(c.part) === part).length;
+                  return renderFolder('part', part, count,
+                    () => setNavPath([currentSubject, part]),
+                    () => setRenameTarget({ type: 'part', oldName: part, subjectContext: currentSubject }),
+                    () => setDelTarget({ subject: currentSubject, part: part })
+                  )
+                })}
+              </div>
+            )}
+            
+            {/* 단원이 없는 카드들 (과목 직속) */}
+            {looseCardsInSubject.length > 0 && (
+              <div style={{ marginTop: subjectFolders.length > 0 ? 32 : 0 }}>
+                <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 12, fontWeight: 600 }}>단원 미지정 카드 ({looseCardsInSubject.length}장)</div>
+                <div style={S.list}>
+                  {looseCardsInSubject.map((card) => (
+                    <EditableCard
+                      key={card.id} card={card}
+                      onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
+                      onDelete={() => deleteCard(card.id)}
+                      subjects={cards?.subjects || []} getParts={cards?.parts}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {subjectFolders.length === 0 && looseCardsInSubject.length === 0 && (
+              <div style={S.empty}>이 과목에는 데이터가 없습니다</div>
+            )}
+          </div>
+        )}
+
+        {/* 단원 레벨 (카드 목록) */}
+        {navPath.length === 2 && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600 }}>카드 목록 ({partCards.length}장)</div>
+            </div>
+            {partCards.length === 0 ? <div style={S.empty}>카드가 없습니다</div> : 
+              <div style={S.list}>
+                {partCards.map((card) => (
+                  <EditableCard
+                    key={card.id} card={card}
+                    onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
+                    onDelete={() => deleteCard(card.id)}
+                    subjects={cards?.subjects || []} getParts={cards?.parts}
+                  />
+                ))}
+              </div>
+            }
+          </div>
+        )}
+
+      </div>
 
       {toast && <div style={{ ...S.toast, background: toast.color }}>{toast.msg}</div>}
     </div>
@@ -493,8 +611,8 @@ function EditableCard({ card, onSave, onDelete, subjects = [], getParts }) {
     <div style={S.item}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}>
-          <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.subject}</span>
-          <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.part}</span>
+          <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.subject || '미분류'}</span>
+          <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.part || '미분류'}</span>
         </div>
         <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
         {isQA
