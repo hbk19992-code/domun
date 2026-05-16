@@ -2,9 +2,19 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Mnemonic Cards</title>
+    <title>두문자 카드</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { 
+        width: 100vw; 
+        max-width: 100%;
+        overflow-x: hidden; 
+        position: relative; 
+      }
+      body { background: #0a0f1e; color: #e2e8f0; font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; }
+      #root { width: 100%; overflow-x: hidden; display: flex; flex-direction: column; min-height: 100vh; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
