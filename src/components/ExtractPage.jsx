@@ -186,9 +186,8 @@ export default function ExtractPage({ cards, onImport }) {
             system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
             contents: [{ role: 'user', parts }],
             generationConfig: {
-              responseMimeType: 'application/json',
               temperature: 0.1,
-              maxOutputTokens: 8192,
+              maxOutputTokens: 65536,
             },
           }),
         }
@@ -200,8 +199,25 @@ export default function ExtractPage({ cards, onImport }) {
         throw new Error(data.error?.message || 'Gemini API 오류')
       }
 
-      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
-      const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim())
+      const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '[]')
+        .replace(/```json|```/g, '').trim()
+
+      // JSON이 잘린 경우 복구: 마지막 완전한 객체까지만 살리기
+      const repairJSON = (str) => {
+        try { return JSON.parse(str) } catch {}
+        // 마지막 완전한 '},' 위치까지 잘라서 배열로 닫기
+        const lastComplete = str.lastIndexOf('},')
+        if (lastComplete > 0) {
+          try { return JSON.parse(str.slice(0, lastComplete + 1) + ']') } catch {}
+        }
+        const lastBrace = str.lastIndexOf('}')
+        if (lastBrace > 0) {
+          try { return JSON.parse(str.slice(0, lastBrace + 1) + ']') } catch {}
+        }
+        throw new Error('JSON Parse error: 응답이 너무 길어 잘렸습니다. 문서를 나눠서 올려보세요.')
+      }
+
+      const parsed = repairJSON(raw)
       if (!Array.isArray(parsed) || parsed.length === 0)
         throw new Error('두문자 카드를 찾지 못했습니다. 두문자가 포함된 문서인지 확인해주세요.')
 
