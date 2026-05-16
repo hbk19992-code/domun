@@ -112,12 +112,33 @@ const S = {
   }),
 }
 
+// 안전한 콤보박스 인풋 컴포넌트
+function DataListInput({ id, value, onChange, placeholder, style, options }) {
+  const safeOptions = Array.isArray(options) ? options : [];
+  return (
+    <div style={{ flex: 1, width: '100%', minWidth: 0 }}>
+      <input
+        style={style}
+        value={value || ''}
+        onChange={onChange}
+        placeholder={placeholder}
+        list={id}
+      />
+      <datalist id={id}>
+        {safeOptions.map((opt, i) => (
+          <option key={i} value={opt != null ? String(opt) : ''} />
+        ))}
+      </datalist>
+    </div>
+  )
+}
+
 export default function StudyPage({ cards }) {
   const { allCards, subjects } = cards
   const [subject, setSubject] = useState('전체')
   const [part, setPart] = useState('전체')
   const [statusFilter, setStatusFilter] = useState('전체')
-  const [mode, setMode] = useState('all')        // 'all' | 'review'
+  const [mode, setMode] = useState('all')
   const [idx, setIdx] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [shuffled, setShuffled] = useState(false)
@@ -143,7 +164,6 @@ export default function StudyPage({ cards }) {
     return [...new Set(base.map((x) => x.part))]
   }, [allCards, subject])
 
-  // 과목/파트 필터 적용된 카드
   const scoped = useMemo(() => {
     let c = allCards
     if (subject !== '전체') c = c.filter((x) => x.subject === subject)
@@ -151,13 +171,11 @@ export default function StudyPage({ cards }) {
     return c
   }, [allCards, subject, part])
 
-  // 복습 대상(복습 시점 도래)
   const dueCards = useMemo(
     () => scoped.filter((c) => isDue(srs[getCardKey(c)])),
     [scoped, srs]
   )
 
-  // 최종 덱
   const deck = useMemo(() => {
     let base = scoped
     if (mode === 'review') {
@@ -197,7 +215,6 @@ export default function StudyPage({ cards }) {
     }, 280)
   }
 
-  // ── 음성 학습: 현재 카드를 읽고 자동으로 다음 카드로 ──
   useEffect(() => {
     if (!listenMode || !playing || !card) return
     setFlipped(false)
@@ -223,7 +240,6 @@ export default function StudyPage({ cards }) {
       },
     })
     return () => stop()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listenMode, playing, safeIdx, rate])
 
   const togglePlay = () => {
@@ -247,7 +263,6 @@ export default function StudyPage({ cards }) {
 
   return (
     <div>
-      {/* 오늘 복습 배너 */}
       {mode === 'all' && dueCards.length > 0 && (
         <div style={S.reviewBanner}>
           <div>
@@ -264,7 +279,6 @@ export default function StudyPage({ cards }) {
         </div>
       )}
 
-      {/* 복습 모드 표시 */}
       {mode === 'review' && (
         <div style={S.reviewBanner}>
           <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 700 }}>
@@ -276,7 +290,6 @@ export default function StudyPage({ cards }) {
         </div>
       )}
 
-      {/* 진행 통계 */}
       {mode === 'all' && (
         <div style={S.progressRow}>
           {STATUS_KEYS.map((key) => {
@@ -298,7 +311,6 @@ export default function StudyPage({ cards }) {
         </div>
       )}
 
-      {/* 필터 */}
       <div style={S.filters}>
         <select style={S.select} value={subject}
           onChange={(e) => { setSubject(e.target.value); setPart('전체'); resetView() }}>
@@ -326,7 +338,6 @@ export default function StudyPage({ cards }) {
         )}
       </div>
 
-      {/* 음성 학습 패널 */}
       {listenMode && (
         <div style={S.listenBar}>
           <div style={S.listenTop}>
@@ -355,7 +366,6 @@ export default function StudyPage({ cards }) {
         </div>
       )}
 
-      {/* 덱 비었을 때 */}
       {deck.length === 0 && (
         <div style={{ ...S.empty, padding: '50px 0' }}>
           <div style={{ fontSize: 36, marginBottom: 10 }}>🎉</div>
@@ -370,11 +380,8 @@ export default function StudyPage({ cards }) {
         </div>
       )}
 
-      {/* 카드 */}
-      {card && <CardWithEdit card={card} flipped={flipped} setFlipped={setFlipped} entryOf={entryOf} handleStatus={handleStatus} updateCard={cards.updateCard} subjects={cards.subjects} getParts={cards.parts} />}
+      {card && <CardWithEdit card={card} flipped={flipped} setFlipped={setFlipped} entryOf={entryOf} handleStatus={handleStatus} updateCard={cards.updateCard} subjects={cards?.subjects || []} getParts={cards?.parts} />}
 
-
-      {/* 네비게이션 */}
       {deck.length > 0 && (
         <div style={S.nav}>
           <button style={S.navBtn(safeIdx === 0)} disabled={safeIdx === 0} onClick={() => go(-1)}>← 이전</button>
@@ -386,16 +393,28 @@ export default function StudyPage({ cards }) {
   )
 }
 
-// ── 카드 + 상태버튼 + 즉시편집 ──────────────────────────────
-function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard, subjects, getParts }) {
+function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard, subjects = [], getParts }) {
   const [editOpen, setEditOpen] = useState(false)
   const [draft, setDraft] = useState(card)
   const isQA = !card.mnemonic && card.answer != null
   const canEdit = !!card.id
 
-  // 카드가 바뀌면 편집창 닫기
   const cardKey = card.id ?? card.question
-  const prevKey = useCallback(() => cardKey, [cardKey])
+
+  let safeParts = []
+  try {
+    if (typeof getParts === 'function') {
+      const partsResult = getParts(draft?.subject || '')
+      if (Array.isArray(partsResult)) safeParts = partsResult
+    }
+  } catch(e) { console.warn(e) }
+  
+  const safeSubjects = Array.isArray(subjects) ? subjects : []
+
+  const handleSave = () => {
+    updateCard(card.id, draft)
+    setEditOpen(false)
+  }
 
   const inp = (key, placeholder, multi) => {
     const style = {
@@ -405,21 +424,19 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
       fontFamily: 'inherit', outline: 'none', marginBottom: 6,
       resize: multi ? 'vertical' : 'none',
     }
+
     if (!multi && (key === 'subject' || key === 'part')) {
-      const listId = key === 'subject' ? `study-sub-${cardKey}` : `study-part-${draft.subject}-${cardKey}`
+      const listId = `study-${key}-${cardKey}`
+      const opts = key === 'subject' ? safeSubjects : safeParts
       return (
-        <div style={{ flex: 1, width: '100%' }}>
-          <input style={style} value={draft[key] || ''}
-            onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} list={listId} />
-          {key === 'subject' && (
-            <datalist id={listId}>{subjects?.map(s => <option key={s} value={s} />)}</datalist>
-          )}
-          {key === 'part' && (
-            <datalist id={listId}>{getParts?.(draft.subject || '').map(p => <option key={p} value={p} />)}</datalist>
-          )}
-        </div>
+        <DataListInput
+          id={listId} value={draft[key]}
+          onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+          placeholder={placeholder} style={style} options={opts}
+        />
       )
     }
+
     return multi
       ? <textarea style={{ ...style, minHeight: 64 }} value={draft[key] || ''}
           onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} />
@@ -429,7 +446,6 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
 
   return (
     <>
-      {/* 카드 */}
       <div style={S.card(flipped, flipped ? entryOf(card)?.status : null)}
         onClick={() => !editOpen && setFlipped((f) => !f)}>
         <div style={S.badge}>{card.subject} · {card.part}</div>
@@ -455,7 +471,6 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
         )}
       </div>
 
-      {/* 상태 버튼 + 편집 버튼 */}
       <div style={{ ...S.statusRow, alignItems: 'stretch' }}>
         {STATUS_KEYS.map((key) => {
           const st = STATUS[key]
@@ -481,7 +496,6 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
         >✎</button>
       </div>
 
-      {/* 인라인 편집 패널 */}
       {editOpen && (
         <div style={{
           background: 'rgba(15,23,42,0.95)', border: '1px solid #334155',

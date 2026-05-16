@@ -63,6 +63,27 @@ const S = {
   }),
 }
 
+// 안전한 콤보박스 인풋 컴포넌트
+function DataListInput({ id, value, onChange, placeholder, style, options }) {
+  const safeOptions = Array.isArray(options) ? options : [];
+  return (
+    <div style={{ flex: 1, width: '100%', minWidth: 0 }}>
+      <input
+        style={style}
+        value={value || ''}
+        onChange={onChange}
+        placeholder={placeholder}
+        list={id}
+      />
+      <datalist id={id}>
+        {safeOptions.map((opt, i) => (
+          <option key={i} value={opt != null ? String(opt) : ''} />
+        ))}
+      </datalist>
+    </div>
+  )
+}
+
 export default function ManagePage({ cards }) {
   const { allCards, userCards, builtinCards, deleteCard, updateCard, deleteBy, countBy, exportJSON, importJSON, deduplicateSelf, duplicateCount } = cards
   const fileRef = useRef(null)
@@ -75,7 +96,6 @@ export default function ManagePage({ cards }) {
   const [delPart, setDelPart] = useState('전체')
   const [confirmDel, setConfirmDel] = useState(false)
 
-  // 내 카드 기준 과목/단원 목록
   const userSubjects = [...new Set(userCards.map((c) => c.subject))]
   const userParts = delSubject === '전체'
     ? [...new Set(userCards.map((c) => c.part))]
@@ -148,7 +168,6 @@ export default function ManagePage({ cards }) {
       <h2 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>카드 관리</h2>
       <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>카드를 내보내거나 가져오고, 링크로 공유할 수 있습니다</p>
 
-      {/* 통계 */}
       <div style={S.stat}>
         <div style={S.statItem}><div style={S.statNum()}>{allCards.length}</div><div style={S.statLabel}>전체 카드</div></div>
         <div style={S.statItem}><div style={S.statNum()}>{builtinCards.length}</div><div style={S.statLabel}>기본 카드</div></div>
@@ -156,7 +175,6 @@ export default function ManagePage({ cards }) {
         <div style={S.statItem}><div style={S.statNum('#f59e0b')}>{duplicateCount}</div><div style={S.statLabel}>중복</div></div>
       </div>
 
-      {/* 중복 배너 */}
       {duplicateCount > 0 && (
         <div style={S.dupBanner}>
           <span style={{ color: '#fbbf24', fontSize: 13 }}>⚠ 중복 카드 {duplicateCount}개</span>
@@ -164,7 +182,6 @@ export default function ManagePage({ cards }) {
         </div>
       )}
 
-      {/* 공유 링크 */}
       <div style={S.shareBox}>
         <div style={{ color: '#94a3b8', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>🔗 공유 링크 만들기</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -193,14 +210,12 @@ export default function ManagePage({ cards }) {
         </div>
       </div>
 
-      {/* JSON 액션 */}
       <div style={S.row}>
         <button style={S.btn('primary', allCards.length === 0)} onClick={exportJSON} disabled={allCards.length === 0}>↓ JSON 내보내기</button>
         <button style={S.btn('default')} onClick={() => fileRef.current?.click()}>↑ JSON 가져오기</button>
         <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
       </div>
 
-      {/* 단원·과목별 일괄 삭제 */}
       {userCards.length > 0 && (
         <div style={{
           background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)',
@@ -246,7 +261,6 @@ export default function ManagePage({ cards }) {
         </div>
       )}
 
-      {/* 내 카드 목록 */}
       <div style={{ color: '#64748b', fontSize: 13, marginBottom: 12 }}>내 카드 ({userCards.length}개)</div>
       {userCards.length === 0
         ? <div style={S.empty}>추가한 카드가 없습니다</div>
@@ -258,8 +272,8 @@ export default function ManagePage({ cards }) {
                 card={card}
                 onSave={(updated) => { updateCard(card.id, updated); showToast('✓ 수정됨', '#22c55e') }}
                 onDelete={() => deleteCard(card.id)}
-                subjects={cards.subjects}
-                getParts={cards.parts}
+                subjects={cards?.subjects || []}
+                getParts={cards?.parts}
               />
             ))}
           </div>
@@ -271,11 +285,20 @@ export default function ManagePage({ cards }) {
   )
 }
 
-// 즉시 편집 가능한 카드 아이템
-function EditableCard({ card, onSave, onDelete, subjects, getParts }) {
+function EditableCard({ card, onSave, onDelete, subjects = [], getParts }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
   const isQA = !card.mnemonic && card.answer != null
+
+  let safeParts = []
+  try {
+    if (typeof getParts === 'function') {
+      const partsResult = getParts(draft?.subject || '')
+      if (Array.isArray(partsResult)) safeParts = partsResult
+    }
+  } catch(e) { console.warn(e) }
+
+  const safeSubjects = Array.isArray(subjects) ? subjects : []
 
   const inputStyle = {
     width: '100%', boxSizing: 'border-box',
@@ -289,27 +312,29 @@ function EditableCard({ card, onSave, onDelete, subjects, getParts }) {
     return (
       <div style={{ ...S.item, flexDirection: 'column', alignItems: 'stretch', gap: 0 }}>
         <div style={{ display: 'flex', gap: 6 }}>
-          <div style={{ flex: 1 }}>
-            <input style={inputStyle} value={draft.subject} list={`manage-sub-${card.id}`}
-              onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="과목" />
-            <datalist id={`manage-sub-${card.id}`}>{subjects?.map(s => <option key={s} value={s} />)}</datalist>
-          </div>
-          <div style={{ flex: 1 }}>
-            <input style={inputStyle} value={draft.part} list={`manage-part-${card.id}`}
-              onChange={(e) => setDraft({ ...draft, part: e.target.value })} placeholder="단원" />
-            <datalist id={`manage-part-${card.id}`}>{getParts?.(draft.subject || '').map(p => <option key={p} value={p} />)}</datalist>
-          </div>
+          <DataListInput
+            id={`manage-sub-${card.id || Math.random().toString(36)}`}
+            value={draft.subject}
+            onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+            placeholder="과목" style={inputStyle} options={safeSubjects}
+          />
+          <DataListInput
+            id={`manage-part-${card.id || Math.random().toString(36)}`}
+            value={draft.part}
+            onChange={(e) => setDraft({ ...draft, part: e.target.value })}
+            placeholder="단원" style={inputStyle} options={safeParts}
+          />
         </div>
-        <input style={inputStyle} value={draft.question}
+        <input style={inputStyle} value={draft.question || ''}
           onChange={(e) => setDraft({ ...draft, question: e.target.value })} placeholder="질문" />
         {isQA ? (
           <textarea style={{ ...inputStyle, minHeight: 60 }} value={draft.answer || ''}
             onChange={(e) => setDraft({ ...draft, answer: e.target.value })} placeholder="답" />
         ) : (
           <>
-            <input style={{ ...inputStyle, color: '#818cf8', fontWeight: 700 }} value={draft.mnemonic}
+            <input style={{ ...inputStyle, color: '#818cf8', fontWeight: 700 }} value={draft.mnemonic || ''}
               onChange={(e) => setDraft({ ...draft, mnemonic: e.target.value })} placeholder="두문자" />
-            <textarea style={{ ...inputStyle, minHeight: 60, fontSize: 12 }} value={draft.detail}
+            <textarea style={{ ...inputStyle, minHeight: 60, fontSize: 12 }} value={draft.detail || ''}
               onChange={(e) => setDraft({ ...draft, detail: e.target.value })} placeholder="설명" />
           </>
         )}

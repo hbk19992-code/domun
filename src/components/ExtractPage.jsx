@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useMemo } from 'react'
 import { classifyCard } from '../utils/dedup'
 
-// ── Gemini 호출 ──────────────────────────────────────────────
 const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
 
 const MNEMONIC_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
@@ -99,19 +98,48 @@ function repairJSON(str) {
   throw new Error('JSON 파싱 실패')
 }
 
-// ── 분류 색상 ────────────────────────────────────────────────
 const TYPE_META = {
   new:      { label: '새 카드',     color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: '#22c55e' },
   upgrade:  { label: '내용 보강',   color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: '#f59e0b' },
   existing: { label: '이미 보유',   color: '#475569', bg: 'rgba(71,85,105,0.1)',  border: '#334155' },
 }
 
-// ── 인라인 편집 가능한 카드 아이템 ───────────────────────────
-function CardItem({ card, type, checked, onToggle, onChange, subjects, getParts }) {
+// 안전한 콤보박스 인풋 컴포넌트 (렌더링 에러 방지)
+function DataListInput({ id, value, onChange, placeholder, style, options }) {
+  const safeOptions = Array.isArray(options) ? options : [];
+  return (
+    <div style={{ flex: 1, width: '100%', minWidth: 0 }}>
+      <input
+        style={style}
+        value={value || ''}
+        onChange={onChange}
+        placeholder={placeholder}
+        list={id}
+      />
+      <datalist id={id}>
+        {safeOptions.map((opt, i) => (
+          <option key={i} value={opt != null ? String(opt) : ''} />
+        ))}
+      </datalist>
+    </div>
+  )
+}
+
+function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getParts }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
-  const meta = TYPE_META[type]
+  const meta = TYPE_META[type] || TYPE_META.new
   const isQA = !card.mnemonic && card.answer != null
+
+  let safeParts = []
+  try {
+    if (typeof getParts === 'function') {
+      const partsResult = getParts(draft?.subject || '')
+      if (Array.isArray(partsResult)) safeParts = partsResult
+    }
+  } catch(e) { console.warn(e) }
+
+  const safeSubjects = Array.isArray(subjects) ? subjects : []
 
   const commitEdit = () => {
     onChange(draft)
@@ -128,27 +156,24 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects, getParts 
       fontFamily: 'inherit', outline: 'none', resize: 'vertical',
       marginBottom: 4,
     }
+    
     if (!multiline && (key === 'subject' || key === 'part')) {
-      const listId = key === 'subject' ? `extract-sub-${card.question}` : `extract-part-${draft.subject}-${card.question}`
+      const listId = `extract-${key}-${card.question || Math.random().toString(36)}`
+      const opts = key === 'subject' ? safeSubjects : safeParts
       return (
-        <div style={{ flex: 1, width: '100%' }}>
-          <input style={style} value={draft[key] || ''}
-            onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
-            placeholder={placeholder} list={listId} />
-          {key === 'subject' && (
-            <datalist id={listId}>{subjects?.map(s => <option key={s} value={s} />)}</datalist>
-          )}
-          {key === 'part' && (
-            <datalist id={listId}>{getParts?.(draft.subject || '').map(p => <option key={p} value={p} />)}</datalist>
-          )}
-        </div>
+        <DataListInput
+          id={listId} value={draft[key]}
+          onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+          placeholder={placeholder} style={style} options={opts}
+        />
       )
     }
+
     return multiline
-      ? <textarea style={{ ...style, minHeight: 56 }} value={draft[key]}
+      ? <textarea style={{ ...style, minHeight: 56 }} value={draft[key] || ''}
           onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
           placeholder={placeholder} />
-      : <input style={style} value={draft[key]}
+      : <input style={style} value={draft[key] || ''}
           onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
           placeholder={placeholder} />
   }
@@ -160,7 +185,6 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects, getParts 
       borderRadius: 12, padding: '11px 13px',
       display: 'flex', gap: 10, alignItems: 'flex-start',
     }}>
-      {/* 체크박스 */}
       <div onClick={onToggle} style={{
         width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginTop: 3, cursor: 'pointer',
         border: `2px solid ${checked ? '#6366f1' : '#334155'}`,
@@ -169,10 +193,7 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects, getParts 
       }}>
         {checked && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>}
       </div>
-
-      {/* 내용 */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        {/* 분류 뱃지 + 태그 */}
         <div style={{ display: 'flex', gap: 5, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{
             fontSize: 10, borderRadius: 4, padding: '2px 7px', fontWeight: 600,
@@ -221,8 +242,6 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects, getParts 
           </div>
         )}
       </div>
-
-      {/* 편집 버튼 */}
       {!editing && (
         <button onClick={(e) => { e.stopPropagation(); setDraft(card); setEditing(true) }} style={{
           background: 'none', border: 'none', color: '#334155',
@@ -233,33 +252,36 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects, getParts 
   )
 }
 
-// ── 메인 컴포넌트 ────────────────────────────────────────────
 export default function ExtractPage({ cards, onImport }) {
   const [apiKey, setApiKey] = useState(() => sessionStorage.getItem('gemini_key') || '')
-  const [extractType, setExtractType] = useState('mnemonic') // 'mnemonic' | 'qa'
-  const [inputMode, setInputMode] = useState('file')   // 'file' | 'text'
+  const [extractType, setExtractType] = useState('mnemonic')
+  const [inputMode, setInputMode] = useState('file')
   const [textInput, setTextInput] = useState('')
   const [dragging, setDragging] = useState(false)
   const [file, setFile] = useState(null)
   const [status, setStatus] = useState('idle')
-  const [extracted, setExtracted] = useState([])       // [{...card, _type}]
+  const [extracted, setExtracted] = useState([])
   const [selected, setSelected] = useState(new Set())
-  const [filterTab, setFilterTab] = useState('new')    // 'all'|'new'|'upgrade'|'existing'
+  const [filterTab, setFilterTab] = useState('new')
   const [progress, setProgress] = useState('')
-
-  const allSubjects = useMemo(() => {
-    return [...new Set([...cards.subjects, ...extracted.map(c => c.subject)])]
-  }, [cards.subjects, extracted])
-
-  const getPartsForSubject = useCallback((subj) => {
-    return [...new Set([
-      ...cards.parts(subj),
-      ...extracted.filter(c => c.subject === subj).map(c => c.part)
-    ])]
-  }, [cards, extracted])
   const [errorMsg, setErrorMsg] = useState('')
   const [importMsg, setImportMsg] = useState('')
   const inputRef = useRef(null)
+
+  const allSubjects = useMemo(() => {
+    let existing = []
+    try { if (Array.isArray(cards?.subjects)) existing = cards.subjects } catch(e){}
+    const newSubjects = Array.isArray(extracted) ? extracted.map(c => c?.subject).filter(Boolean) : []
+    return [...new Set([...existing, ...newSubjects])]
+  }, [cards?.subjects, extracted])
+
+  const getPartsForSubject = useCallback((subj) => {
+    if (!subj) return []
+    let existingParts = []
+    try { if (typeof cards?.parts === 'function') existingParts = cards.parts(subj) || [] } catch(e){}
+    const newParts = Array.isArray(extracted) ? extracted.filter(c => c?.subject === subj).map(c => c?.part).filter(Boolean) : []
+    return [...new Set([...existingParts, ...newParts])]
+  }, [cards, extracted])
 
   const saveKey = (k) => { sessionStorage.setItem('gemini_key', k); setApiKey(k) }
 
@@ -281,7 +303,6 @@ export default function ExtractPage({ cards, onImport }) {
       if (!Array.isArray(parsed) || parsed.length === 0)
         throw new Error(extractType === 'qa' ? '핵심 내용을 찾지 못했습니다.' : '두문자 카드를 찾지 못했습니다.')
 
-      // QA 카드는 두문자·설명을 비우고 answer를 채움
       const normalized = parsed.map((c) =>
         extractType === 'qa'
           ? { subject: c.subject || '미분류', part: c.part || '미분류',
@@ -289,7 +310,6 @@ export default function ExtractPage({ cards, onImport }) {
           : c
       )
 
-      // 기존 카드와 비교해 분류
       const classified = normalized.map((c) => ({
         ...c,
         _type: classifyCard(c, cards.allCards).type,
@@ -428,7 +448,6 @@ export default function ExtractPage({ cards, onImport }) {
 
       {apiKey && status === 'idle' && (
         <>
-          {/* 추출 방식 선택 */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 8 }}>추출 방식</div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -450,7 +469,6 @@ export default function ExtractPage({ cards, onImport }) {
             </div>
           </div>
 
-          {/* 입력 모드 토글 */}
           <div style={{ display: 'flex', gap: 0, marginBottom: 16, background: '#0f172a', borderRadius: 10, padding: 3, width: 'fit-content' }}>
             {[['file', '📄 파일 업로드'], ['text', '✎ 텍스트 붙여넣기']].map(([mode, label]) => (
               <button key={mode} onClick={() => setInputMode(mode)} style={{
@@ -532,7 +550,6 @@ export default function ExtractPage({ cards, onImport }) {
 
       {status === 'done' && (
         <div>
-          {/* 분류 탭 */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
             {[
               ['all', `전체 ${counts.all}`],
@@ -556,7 +573,6 @@ export default function ExtractPage({ cards, onImport }) {
             </button>
           </div>
 
-          {/* 카드 목록 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', marginBottom: 14 }}>
             {visible.length === 0
               ? <div style={{ color: '#334155', textAlign: 'center', padding: '24px 0', fontSize: 13 }}>해당 카드가 없습니다</div>
@@ -573,7 +589,6 @@ export default function ExtractPage({ cards, onImport }) {
             }
           </div>
 
-          {/* 액션 */}
           <div style={{ display: 'flex', gap: 10 }}>
             <button
               style={{
