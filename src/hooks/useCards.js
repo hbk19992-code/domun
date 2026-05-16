@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { builtinCards } from '../data/mnemonics'
-import { isDuplicate, normMnemonic, normQuestion } from '../utils/dedup'
+import { isDuplicate } from '../utils/dedup'
 
 const STORAGE_KEY = 'mnemonic_user_cards'
 
@@ -62,7 +62,6 @@ export function useCards() {
     })
   }, [])
 
-  // 카드 내용 수정
   const updateCard = useCallback((id, updated) => {
     setUserCards((prev) => {
       const next = prev.map((c) => (c.id === id ? { ...c, ...updated } : c))
@@ -71,13 +70,12 @@ export function useCards() {
     })
   }, [])
 
-  // 카드 순서 변경 (드래그 앤 드롭 및 위/아래 버튼용)
+  // 카드 순서 교환 — ManagePage 드래그 정렬용 (moveCard 별칭 포함)
   const reorderCard = useCallback((sourceId, targetId) => {
     setUserCards((prev) => {
-      const srcIdx = prev.findIndex(c => c.id === sourceId)
-      const tgtIdx = prev.findIndex(c => c.id === targetId)
+      const srcIdx = prev.findIndex((c) => c.id === sourceId)
+      const tgtIdx = prev.findIndex((c) => c.id === targetId)
       if (srcIdx < 0 || tgtIdx < 0 || srcIdx === tgtIdx) return prev
-
       const next = [...prev]
       const [moved] = next.splice(srcIdx, 1)
       next.splice(tgtIdx, 0, moved)
@@ -86,16 +84,14 @@ export function useCards() {
     })
   }, [])
 
-  // 과목/단원 단위 일괄 삭제 — 삭제된 수 반환
   const deleteBy = useCallback(({ subject, part }) => {
     let removed = 0
     setUserCards((prev) => {
       const next = prev.filter((c) => {
-        const matchSubject = !subject || subject === '전체' || c.subject === subject
-        const matchPart = !part || part === '전체' || c.part === part
-        const match = matchSubject && matchPart
-        if (match) removed++
-        return !match
+        const ms = !subject || subject === '전체' || c.subject === subject
+        const mp = !part    || part    === '전체' || c.part    === part
+        if (ms && mp) { removed++; return false }
+        return true
       })
       saveUserCards(next)
       return next
@@ -103,19 +99,17 @@ export function useCards() {
     return removed
   }, [])
 
-  // 일괄 삭제 대상 수 미리보기
-  const countBy = useCallback(({ subject, part }) => {
-    return userCards.filter((c) => {
-      const matchSubject = !subject || subject === '전체' || c.subject === subject
-      const matchPart = !part || part === '전체' || c.part === part
-      return matchSubject && matchPart
+  const countBy = useCallback(({ subject, part }) =>
+    userCards.filter((c) => {
+      const ms = !subject || subject === '전체' || c.subject === subject
+      const mp = !part    || part    === '전체' || c.part    === part
+      return ms && mp
     }).length
-  }, [userCards])
+  , [userCards])
 
   const deduplicateSelf = useCallback(() => {
     let removed = 0
     setUserCards((prev) => {
-      // 빌트인과도 중복 체크
       const withoutBuiltin = prev.filter((c) => !builtinCards.some((b) => isDuplicate(b, c)))
       const deduped = dedupList(withoutBuiltin)
       removed = prev.length - deduped.length
@@ -134,8 +128,8 @@ export function useCards() {
     a.click()
   }, [allCards])
 
-  const importJSON = useCallback((file) => {
-    return new Promise((resolve, reject) => {
+  const importJSON = useCallback((file) =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = (e) => {
         try {
@@ -148,7 +142,7 @@ export function useCards() {
       reader.onerror = () => reject(new Error('파일 읽기 실패'))
       reader.readAsText(file)
     })
-  }, [addCards])
+  , [addCards])
 
   const duplicateCount = (() => {
     const withoutBuiltin = userCards.filter((c) => !builtinCards.some((b) => isDuplicate(b, c)))
@@ -158,5 +152,15 @@ export function useCards() {
   const subjects = [...new Set(allCards.map((c) => c.subject))]
   const parts = (subject) => [...new Set(allCards.filter((c) => c.subject === subject).map((c) => c.part))]
 
-  return { allCards, userCards, builtinCards, addCard, addCards, deleteCard, updateCard, reorderCard, deleteBy, countBy, exportJSON, importJSON, deduplicateSelf, duplicateCount, subjects, parts }
+  return {
+    allCards, userCards, builtinCards,
+    addCard, addCards,
+    deleteCard, updateCard,
+    moveCard: reorderCard,   // ManagePage 호환
+    reorderCard,             // 동일 함수, 이름만 두 개
+    deleteBy, countBy,
+    exportJSON, importJSON,
+    deduplicateSelf, duplicateCount,
+    subjects, parts,
+  }
 }
