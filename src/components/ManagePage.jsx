@@ -237,14 +237,14 @@ export default function ManagePage({ cards }) {
   // 순서 이동 모드: { type:'subject'|'part'|'card', id }
   const [reorderTarget, setReorderTarget] = useState(null)
 
-  // 다중 선택 이동
-  const [selectMode, setSelectMode] = useState(false)
+  // 다중 선택 (selectMode: null | 'subject' | 'part' | 'card')
+  const [selectMode, setSelectMode] = useState(null)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [confirmMultiDel, setConfirmMultiDel] = useState(false)
 
   // 폴더 이동 시 선택 모드 해제
   useEffect(() => {
-    setSelectMode(false); setSelectedIds(new Set()); setConfirmMultiDel(false)
+    setSelectMode(null); setSelectedIds(new Set()); setConfirmMultiDel(false)
     setReorderTarget(null)
   }, [currentSubject, currentPart])
 
@@ -322,16 +322,41 @@ export default function ManagePage({ cards }) {
     n.has(id) ? n.delete(id) : n.add(id)
     return n
   })
-  const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()); setConfirmMultiDel(false) }
-  const selectAll = (list) => {
-    const allSelected = list.every((c) => selectedIds.has(c.id))
-    setSelectedIds(allSelected ? new Set() : new Set(list.map((c) => c.id)))
+  const exitSelectMode = () => { setSelectMode(null); setSelectedIds(new Set()); setConfirmMultiDel(false) }
+  const startSelect = (kind) => { setSelectMode(kind); setSelectedIds(new Set()); setConfirmMultiDel(false) }
+  // ids: 문자열(폴더명) 또는 카드 id 배열
+  const selectAllOf = (ids) => {
+    const allSelected = ids.length > 0 && ids.every((id) => selectedIds.has(id))
+    setSelectedIds(allSelected ? new Set() : new Set(ids))
   }
+
   const handleMultiDelete = () => {
     if (!confirmMultiDel) { setConfirmMultiDel(true); return }
     const n = selectedIds.size
-    selectedIds.forEach((id) => deleteCard(id))
-    showToast(`✓ ${n}장 삭제됨`, '#ef4444')
+    if (selectMode === 'card') {
+      selectedIds.forEach((id) => deleteCard(id))
+    } else if (selectMode === 'part') {
+      selectedIds.forEach((partName) => {
+        userCards.filter((c) => safeStr(c.subject) === safeStr(currentSubject) && safeStr(c.part) === safeStr(partName))
+          .forEach((c) => deleteCard(c.id))
+      })
+      setCustomPartOrder((prev) => {
+        const arr = (prev[currentSubject] || []).filter((p) => !selectedIds.has(p))
+        const next = { ...prev, [currentSubject]: arr }
+        localStorage.setItem('domun_part_order', JSON.stringify(next))
+        return next
+      })
+    } else if (selectMode === 'subject') {
+      selectedIds.forEach((subjName) => {
+        userCards.filter((c) => safeStr(c.subject) === safeStr(subjName)).forEach((c) => deleteCard(c.id))
+      })
+      setCustomSubjOrder((prev) => {
+        const next = prev.filter((s) => !selectedIds.has(s))
+        localStorage.setItem('domun_subj_order', JSON.stringify(next))
+        return next
+      })
+    }
+    showToast(`✓ ${n}개 삭제됨`, '#ef4444')
     exitSelectMode()
   }
 
@@ -435,6 +460,15 @@ export default function ManagePage({ cards }) {
       selectedIds.forEach((id) => updateCard(id, { subject: newSubj, part: newPart }))
       showToast(`✓ ${n}장 이동 완료`, '#22c55e')
       exitSelectMode()
+    } else if (moveTarget.type === 'multi-part') {
+      const n = selectedIds.size
+      let moved = 0
+      selectedIds.forEach((partName) => {
+        userCards.filter((c) => safeStr(c.subject) === safeStr(currentSubject) && safeStr(c.part) === safeStr(partName))
+          .forEach((c) => { updateCard(c.id, { subject: newSubj }); moved++ })
+      })
+      showToast(`✓ 단원 ${n}개(카드 ${moved}장) 이동 완료`, '#22c55e')
+      exitSelectMode()
     } else if (moveTarget.type === 'part') {
       let count = 0
       userCards.forEach((c) => {
@@ -477,6 +511,34 @@ export default function ManagePage({ cards }) {
   // ── 폴더 카드 렌더링 ──
   const renderFolder = (type, title, count, pos, total, handlers) => {
     const isReordering = reorderTarget?.type === type && reorderTarget?.id === title
+    const isSelecting = selectMode === type
+    const isSelected = selectedIds.has(title)
+
+    // 다중 선택 모드
+    if (isSelecting) {
+      return (
+        <div key={title} style={{
+          ...S.folderCard, cursor: 'pointer',
+          border: `1.5px solid ${isSelected ? '#6366f1' : '#334155'}`,
+          background: isSelected ? 'rgba(99,102,241,0.12)' : S.folderCard.background,
+        }} onClick={() => toggleSelect(title)}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ ...S.folderIcon, opacity: count === 0 ? 0.4 : 1, marginBottom: 4 }}>{type === 'subject' ? '📁' : '📂'}</div>
+            <div style={{
+              width: 22, height: 22, borderRadius: 6, marginTop: 4,
+              border: `2px solid ${isSelected ? '#6366f1' : '#334155'}`,
+              background: isSelected ? '#6366f1' : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {isSelected && <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>✓</span>}
+            </div>
+          </div>
+          <div style={S.folderTitle}>{displayStr(title)}</div>
+          <div style={S.folderCount}>카드 {count}장</div>
+        </div>
+      )
+    }
+
     return (
       <div key={title} style={{
         ...S.folderCard,
@@ -533,7 +595,7 @@ export default function ManagePage({ cards }) {
         onMoveDown={() => moveCardInList(card, 1, list)}
         canUp={idx > 0}
         canDown={idx < list.length - 1}
-        selectMode={selectMode}
+        selectMode={selectMode === 'card'}
         selected={selectedIds.has(card.id)}
         onToggleSelect={() => toggleSelect(card.id)}
       />
@@ -638,16 +700,24 @@ export default function ManagePage({ cards }) {
         {navPath.length === 0 && (
           sortedSubjects.length === 0
             ? <div style={S.empty}>저장소에 생성된 과목이 없습니다.</div>
-            : <div style={S.folderGrid}>
-                {sortedSubjects.map((subj, i) => {
-                  const count = userCards.filter((c) => safeStr(c.subject) === subj).length
-                  return renderFolder('subject', subj, count, i, sortedSubjects.length, {
-                    open: () => setNavPath([subj]),
-                    rename: () => setRenameTarget({ type: 'subject', oldName: subj }),
-                    del: () => setDelTarget({ subject: subj, part: null }),
-                    move: (dir) => moveSubject(subj, dir),
-                  })
-                })}
+            : <div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                  <SelectToggle count={sortedSubjects.length} active={selectMode === 'subject'}
+                    allSelected={sortedSubjects.length > 0 && sortedSubjects.every((s) => selectedIds.has(s))}
+                    onToggle={() => selectMode === 'subject' ? exitSelectMode() : startSelect('subject')}
+                    onSelectAll={() => selectAllOf(sortedSubjects)} />
+                </div>
+                <div style={S.folderGrid}>
+                  {sortedSubjects.map((subj, i) => {
+                    const count = userCards.filter((c) => safeStr(c.subject) === subj).length
+                    return renderFolder('subject', subj, count, i, sortedSubjects.length, {
+                      open: () => setNavPath([subj]),
+                      rename: () => setRenameTarget({ type: 'subject', oldName: subj }),
+                      del: () => setDelTarget({ subject: subj, part: null }),
+                      move: (dir) => moveSubject(subj, dir),
+                    })
+                  })}
+                </div>
               </div>
         )}
 
@@ -655,25 +725,35 @@ export default function ManagePage({ cards }) {
         {navPath.length === 1 && (
           <div>
             {sortedParts.length > 0 && (
-              <div style={S.folderGrid}>
-                {sortedParts.map((part, i) => {
-                  const count = currentSubjectCards.filter((c) => safeStr(c.part) === part).length
-                  return renderFolder('part', part, count, i, sortedParts.length, {
-                    open: () => setNavPath([currentSubject, part]),
-                    rename: () => setRenameTarget({ type: 'part', oldName: part, subjectContext: currentSubject }),
-                    del: () => setDelTarget({ subject: currentSubject, part }),
-                    move: (dir) => movePart(part, dir),
-                    moveFolder: () => setMoveTarget({ type: 'part', subject: currentSubject, part }),
-                  })
-                })}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                  <SelectToggle count={sortedParts.length} active={selectMode === 'part'}
+                    allSelected={sortedParts.length > 0 && sortedParts.every((p) => selectedIds.has(p))}
+                    onToggle={() => selectMode === 'part' ? exitSelectMode() : startSelect('part')}
+                    onSelectAll={() => selectAllOf(sortedParts)} />
+                </div>
+                <div style={S.folderGrid}>
+                  {sortedParts.map((part, i) => {
+                    const count = currentSubjectCards.filter((c) => safeStr(c.part) === part).length
+                    return renderFolder('part', part, count, i, sortedParts.length, {
+                      open: () => setNavPath([currentSubject, part]),
+                      rename: () => setRenameTarget({ type: 'part', oldName: part, subjectContext: currentSubject }),
+                      del: () => setDelTarget({ subject: currentSubject, part }),
+                      move: (dir) => movePart(part, dir),
+                      moveFolder: () => setMoveTarget({ type: 'part', subject: currentSubject, part }),
+                    })
+                  })}
+                </div>
               </div>
             )}
             {looseCardsInSubject.length > 0 && (
               <div style={{ marginTop: sortedParts.length > 0 ? 32 : 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <div style={{ color: '#94a3b8', fontSize: 13, fontWeight: 600 }}>단원 미지정 카드 ({looseCardsInSubject.length}장)</div>
-                  <SelectToggle list={looseCardsInSubject} selectMode={selectMode} selectedIds={selectedIds}
-                    onToggle={() => selectMode ? exitSelectMode() : setSelectMode(true)} onSelectAll={() => selectAll(looseCardsInSubject)} />
+                  <SelectToggle count={looseCardsInSubject.length} active={selectMode === 'card'}
+                    allSelected={looseCardsInSubject.length > 0 && looseCardsInSubject.every((c) => selectedIds.has(c.id))}
+                    onToggle={() => selectMode === 'card' ? exitSelectMode() : startSelect('card')}
+                    onSelectAll={() => selectAllOf(looseCardsInSubject.map((c) => c.id))} />
                 </div>
                 <div style={S.list}>{looseCardsInSubject.map((c) => renderCard(c, looseCardsInSubject))}</div>
               </div>
@@ -687,8 +767,10 @@ export default function ManagePage({ cards }) {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600 }}>카드 목록 ({partCards.length}장)</div>
-              <SelectToggle list={partCards} selectMode={selectMode} selectedIds={selectedIds}
-                onToggle={() => selectMode ? exitSelectMode() : setSelectMode(true)} onSelectAll={() => selectAll(partCards)} />
+              <SelectToggle count={partCards.length} active={selectMode === 'card'}
+                allSelected={partCards.length > 0 && partCards.every((c) => selectedIds.has(c.id))}
+                onToggle={() => selectMode === 'card' ? exitSelectMode() : startSelect('card')}
+                onSelectAll={() => selectAllOf(partCards.map((c) => c.id))} />
             </div>
             {partCards.length === 0 ? <div style={S.empty}>카드가 없습니다</div>
               : <div style={S.list}>{partCards.map((c) => renderCard(c, partCards))}</div>}
@@ -705,12 +787,16 @@ export default function ManagePage({ cards }) {
           zIndex: 400, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', maxWidth: '92vw',
         }}>
           <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 700, padding: '0 6px', whiteSpace: 'nowrap' }}>
-            {selectedIds.size}장 선택
+            {selectedIds.size}개 선택
           </span>
-          <button onClick={() => setMoveTarget({ type: 'multi', count: selectedIds.size })}
-            style={{ background: 'linear-gradient(135deg,#0284c7,#38bdf8)', color: '#fff', border: 'none', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            🚀 이동
-          </button>
+          {selectMode !== 'subject' && (
+            <button onClick={() => setMoveTarget(selectMode === 'part'
+              ? { type: 'multi-part', count: selectedIds.size }
+              : { type: 'multi', count: selectedIds.size })}
+              style={{ background: 'linear-gradient(135deg,#0284c7,#38bdf8)', color: '#fff', border: 'none', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              🚀 이동
+            </button>
+          )}
           <button onClick={handleMultiDelete}
             style={{ background: confirmMultiDel ? '#ef4444' : 'rgba(239,68,68,0.15)', color: confirmMultiDel ? '#fff' : '#f87171', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             {confirmMultiDel ? '정말 삭제?' : '🗑 삭제'}
@@ -727,22 +813,21 @@ export default function ManagePage({ cards }) {
   )
 }
 
-function SelectToggle({ list, selectMode, selectedIds, onToggle, onSelectAll }) {
-  if (list.length === 0) return null
-  const allSelected = list.every((c) => selectedIds.has(c.id))
+function SelectToggle({ count, active, allSelected, onToggle, onSelectAll }) {
+  if (count === 0) return null
   return (
     <div style={{ display: 'flex', gap: 6 }}>
-      {selectMode && (
+      {active && (
         <button onClick={onSelectAll} style={{ background: 'none', border: '1px solid #334155', borderRadius: 8, padding: '5px 10px', color: '#94a3b8', fontSize: 12, cursor: 'pointer' }}>
           {allSelected ? '전체 해제' : '전체 선택'}
         </button>
       )}
       <button onClick={onToggle} style={{
-        background: selectMode ? 'rgba(99,102,241,0.15)' : 'none',
-        border: `1px solid ${selectMode ? '#6366f1' : '#334155'}`, borderRadius: 8,
-        padding: '5px 10px', color: selectMode ? '#818cf8' : '#94a3b8', fontSize: 12, cursor: 'pointer', fontWeight: 600,
+        background: active ? 'rgba(99,102,241,0.15)' : 'none',
+        border: `1px solid ${active ? '#6366f1' : '#334155'}`, borderRadius: 8,
+        padding: '5px 10px', color: active ? '#818cf8' : '#94a3b8', fontSize: 12, cursor: 'pointer', fontWeight: 600,
       }}>
-        {selectMode ? '선택 종료' : '☑ 선택'}
+        {active ? '선택 종료' : '☑ 선택'}
       </button>
     </div>
   )
