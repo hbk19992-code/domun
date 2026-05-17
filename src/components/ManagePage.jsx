@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from 'react'
+import { useRef, useState, useMemo, useEffect } from 'react'
 import { encodeCards, buildShareUrl } from '../utils/share'
 
 const S = {
@@ -133,8 +133,9 @@ function CreateFolderModal({ type, onSave, onClose }) {
 
 function MoveModal({ target, onSave, onClose, subjects, getParts }) {
   const isCard = target.type === 'card'
-  const initialSubj = isCard ? target.card.subject : target.subject
-  const initialPart = isCard ? target.card.part : target.part
+  const isMulti = target.type === 'multi'
+  const initialSubj = isCard ? target.card.subject : (isMulti ? '' : target.subject)
+  const initialPart = isCard ? target.card.part : (isMulti ? '' : target.part)
   const [newSubj, setNewSubj] = useState(initialSubj || '')
   const [newPart, setNewPart] = useState(initialPart || '')
   const safeSubjects = Array.isArray(subjects) ? subjects : []
@@ -146,7 +147,10 @@ function MoveModal({ target, onSave, onClose, subjects, getParts }) {
       <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 800, marginBottom: 12 }}>🚀 위치 이동</div>
         <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>
-          {isCard ? '이 카드를' : <span><strong style={{ color: '#38bdf8' }}>{initialPart}</strong> 단원 전체를</span>} 어디로 이동할까요?<br />
+          {isMulti
+            ? <span>선택한 <strong style={{ color: '#38bdf8' }}>{target.count}장</strong>을 어디로 이동할까요?</span>
+            : isCard ? '이 카드를 어디로 이동할까요?'
+            : <span><strong style={{ color: '#38bdf8' }}>{initialPart}</strong> 단원 전체를 어디로 이동할까요?</span>}<br />
           (목록에 없는 새 이름을 입력하면 폴더가 생성됩니다.)
         </div>
         <div style={{ marginBottom: 16 }}>
@@ -233,6 +237,17 @@ export default function ManagePage({ cards }) {
   // 순서 이동 모드: { type:'subject'|'part'|'card', id }
   const [reorderTarget, setReorderTarget] = useState(null)
 
+  // 다중 선택 이동
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [confirmMultiDel, setConfirmMultiDel] = useState(false)
+
+  // 폴더 이동 시 선택 모드 해제
+  useEffect(() => {
+    setSelectMode(false); setSelectedIds(new Set()); setConfirmMultiDel(false)
+    setReorderTarget(null)
+  }, [currentSubject, currentPart])
+
   const [renameTarget, setRenameTarget] = useState(null)
   const [delTarget, setDelTarget] = useState(null)
   const [moveTarget, setMoveTarget] = useState(null)
@@ -299,6 +314,25 @@ export default function ManagePage({ cards }) {
     const i = list.findIndex((c) => c.id === card.id), j = i + dir
     if (j < 0 || j >= list.length) return
     reorderCard(card.id, list[j].id)
+  }
+
+  // ── 다중 선택 ──
+  const toggleSelect = (id) => setSelectedIds((prev) => {
+    const n = new Set(prev)
+    n.has(id) ? n.delete(id) : n.add(id)
+    return n
+  })
+  const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()); setConfirmMultiDel(false) }
+  const selectAll = (list) => {
+    const allSelected = list.every((c) => selectedIds.has(c.id))
+    setSelectedIds(allSelected ? new Set() : new Set(list.map((c) => c.id)))
+  }
+  const handleMultiDelete = () => {
+    if (!confirmMultiDel) { setConfirmMultiDel(true); return }
+    const n = selectedIds.size
+    selectedIds.forEach((id) => deleteCard(id))
+    showToast(`✓ ${n}장 삭제됨`, '#ef4444')
+    exitSelectMode()
   }
 
   // ── 폴더 생성 ──
@@ -396,6 +430,11 @@ export default function ManagePage({ cards }) {
     if (moveTarget.type === 'card') {
       updateCard(moveTarget.card.id, { subject: newSubj, part: newPart })
       showToast('✓ 카드 이동 완료', '#22c55e')
+    } else if (moveTarget.type === 'multi') {
+      const n = selectedIds.size
+      selectedIds.forEach((id) => updateCard(id, { subject: newSubj, part: newPart }))
+      showToast(`✓ ${n}장 이동 완료`, '#22c55e')
+      exitSelectMode()
     } else if (moveTarget.type === 'part') {
       let count = 0
       userCards.forEach((c) => {
@@ -494,6 +533,9 @@ export default function ManagePage({ cards }) {
         onMoveDown={() => moveCardInList(card, 1, list)}
         canUp={idx > 0}
         canDown={idx < list.length - 1}
+        selectMode={selectMode}
+        selected={selectedIds.has(card.id)}
+        onToggleSelect={() => toggleSelect(card.id)}
       />
     )
   }
@@ -628,7 +670,11 @@ export default function ManagePage({ cards }) {
             )}
             {looseCardsInSubject.length > 0 && (
               <div style={{ marginTop: sortedParts.length > 0 ? 32 : 0 }}>
-                <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 12, fontWeight: 600 }}>단원 미지정 카드 ({looseCardsInSubject.length}장)</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ color: '#94a3b8', fontSize: 13, fontWeight: 600 }}>단원 미지정 카드 ({looseCardsInSubject.length}장)</div>
+                  <SelectToggle list={looseCardsInSubject} selectMode={selectMode} selectedIds={selectedIds}
+                    onToggle={() => selectMode ? exitSelectMode() : setSelectMode(true)} onSelectAll={() => selectAll(looseCardsInSubject)} />
+                </div>
                 <div style={S.list}>{looseCardsInSubject.map((c) => renderCard(c, looseCardsInSubject))}</div>
               </div>
             )}
@@ -639,19 +685,70 @@ export default function ManagePage({ cards }) {
         {/* 단원: 카드 목록 */}
         {navPath.length === 2 && (
           <div>
-            <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>카드 목록 ({partCards.length}장)</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600 }}>카드 목록 ({partCards.length}장)</div>
+              <SelectToggle list={partCards} selectMode={selectMode} selectedIds={selectedIds}
+                onToggle={() => selectMode ? exitSelectMode() : setSelectMode(true)} onSelectAll={() => selectAll(partCards)} />
+            </div>
             {partCards.length === 0 ? <div style={S.empty}>카드가 없습니다</div>
               : <div style={S.list}>{partCards.map((c) => renderCard(c, partCards))}</div>}
           </div>
         )}
       </div>
 
+      {/* 다중 선택 액션 바 */}
+      {selectMode && selectedIds.size > 0 && (
+        <div style={{
+          position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+          background: '#1e293b', border: '1px solid #334155', borderRadius: 14,
+          padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8,
+          zIndex: 400, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', maxWidth: '92vw',
+        }}>
+          <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 700, padding: '0 6px', whiteSpace: 'nowrap' }}>
+            {selectedIds.size}장 선택
+          </span>
+          <button onClick={() => setMoveTarget({ type: 'multi', count: selectedIds.size })}
+            style={{ background: 'linear-gradient(135deg,#0284c7,#38bdf8)', color: '#fff', border: 'none', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            🚀 이동
+          </button>
+          <button onClick={handleMultiDelete}
+            style={{ background: confirmMultiDel ? '#ef4444' : 'rgba(239,68,68,0.15)', color: confirmMultiDel ? '#fff' : '#f87171', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            {confirmMultiDel ? '정말 삭제?' : '🗑 삭제'}
+          </button>
+          <button onClick={exitSelectMode}
+            style={{ background: 'none', color: '#64748b', border: 'none', fontSize: 13, cursor: 'pointer', padding: '0 4px' }}>
+            취소
+          </button>
+        </div>
+      )}
+
       {toast && <div style={{ ...S.toast, background: toast.color }}>{toast.msg}</div>}
     </div>
   )
 }
 
-function EditableCard({ card, onSave, onDelete, onMove, subjects = [], getParts, reordering, onReorderStart, onReorderDone, onMoveUp, onMoveDown, canUp, canDown }) {
+function SelectToggle({ list, selectMode, selectedIds, onToggle, onSelectAll }) {
+  if (list.length === 0) return null
+  const allSelected = list.every((c) => selectedIds.has(c.id))
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      {selectMode && (
+        <button onClick={onSelectAll} style={{ background: 'none', border: '1px solid #334155', borderRadius: 8, padding: '5px 10px', color: '#94a3b8', fontSize: 12, cursor: 'pointer' }}>
+          {allSelected ? '전체 해제' : '전체 선택'}
+        </button>
+      )}
+      <button onClick={onToggle} style={{
+        background: selectMode ? 'rgba(99,102,241,0.15)' : 'none',
+        border: `1px solid ${selectMode ? '#6366f1' : '#334155'}`, borderRadius: 8,
+        padding: '5px 10px', color: selectMode ? '#818cf8' : '#94a3b8', fontSize: 12, cursor: 'pointer', fontWeight: 600,
+      }}>
+        {selectMode ? '선택 종료' : '☑ 선택'}
+      </button>
+    </div>
+  )
+}
+
+function EditableCard({ card, onSave, onDelete, onMove, subjects = [], getParts, reordering, onReorderStart, onReorderDone, onMoveUp, onMoveDown, canUp, canDown, selectMode, selected, onToggleSelect }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
   const isQA = !card.mnemonic && card.answer != null
@@ -704,6 +801,33 @@ function EditableCard({ card, onSave, onDelete, onMove, subjects = [], getParts,
           <button style={S.reBtn(!canUp)} disabled={!canUp} onClick={onMoveUp}>▲</button>
           <button style={S.reBtn(!canDown)} disabled={!canDown} onClick={onMoveDown}>▼</button>
           <button style={S.reBtn(false, 'done')} onClick={onReorderDone}>✓</button>
+        </div>
+      </div>
+    )
+  }
+
+  // 다중 선택 모드
+  if (selectMode) {
+    return (
+      <div style={{ ...S.item, alignItems: 'center', cursor: 'pointer', background: selected ? 'rgba(99,102,241,0.12)' : 'rgba(15,23,42,0.7)', border: `1px solid ${selected ? '#6366f1' : '#1e293b'}` }}
+        onClick={onToggleSelect}>
+        <div style={{
+          width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+          border: `2px solid ${selected ? '#6366f1' : '#334155'}`,
+          background: selected ? '#6366f1' : 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {selected && <span style={{ color: '#fff', fontSize: 12, fontWeight: 700 }}>✓</span>}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}>
+            <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.subject || '미분류'}</span>
+            <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px' }}>{card.part || '미분류'}</span>
+          </div>
+          <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
+          {isQA
+            ? <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{card.answer}</div>
+            : <div style={{ color: '#818cf8', fontSize: 13, fontWeight: 700 }}>{card.mnemonic}</div>}
         </div>
       </div>
     )
