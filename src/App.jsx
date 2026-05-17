@@ -12,32 +12,31 @@ const TABS = [
 ]
 
 const S = {
-  wrap: { minHeight: '100vh', background: '#0a0f1e', display: 'flex', flexDirection: 'column', width: '100%', overflowX: 'hidden' },
+  wrap: { minHeight: '100vh', background: '#0a0f1e', display: 'flex', flexDirection: 'column', overflowX: 'hidden' },
   header: {
     borderBottom: '1px solid #1e293b', padding: '0 16px',
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    display: 'flex', alignItems: 'center', gap: 16,
     position: 'sticky', top: 0, zIndex: 100,
     background: 'rgba(10,15,30,0.95)', backdropFilter: 'blur(12px)',
-    width: '100%', boxSizing: 'border-box'
   },
-  logo: { fontSize: 16, fontWeight: 800, color: '#e2e8f0', padding: '16px 0', whiteSpace: 'nowrap', flexShrink: 0 },
-  tabs: { display: 'flex', gap: 4, overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
+  logo: { fontSize: 17, fontWeight: 800, color: '#e2e8f0', padding: '16px 0', whiteSpace: 'nowrap' },
+  tabs: { display: 'flex', gap: 2 },
   tab: (active) => ({
     padding: '16px 10px', border: 'none', background: 'none',
     color: active ? '#818cf8' : '#475569',
     borderBottom: active ? '2px solid #6366f1' : '2px solid transparent',
     cursor: 'pointer', fontSize: 14, fontWeight: active ? 700 : 400,
-    transition: 'all 0.15s', whiteSpace: 'nowrap'
+    whiteSpace: 'nowrap',
   }),
-  content: { flex: 1, padding: '24px 16px', maxWidth: 760, width: '100%', margin: '0 auto', boxSizing: 'border-box', overflowX: 'hidden' },
+  content: { flex: 1, padding: '24px 16px', maxWidth: 760, width: '100%', margin: '0 auto' },
   overlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 200, padding: 24, boxSizing: 'border-box'
+    zIndex: 200, padding: 24,
   },
   modal: {
     background: '#0f172a', border: '1px solid #1e293b', borderRadius: 20,
-    padding: 24, width: '100%', maxWidth: 480, boxSizing: 'border-box'
+    padding: 32, width: '100%', maxWidth: 480,
   },
   modalTitle: { color: '#e2e8f0', fontSize: 18, fontWeight: 800, marginBottom: 8 },
   modalSub: { color: '#64748b', fontSize: 13, marginBottom: 24, lineHeight: 1.6 },
@@ -62,7 +61,7 @@ function ShareImportModal({ sharedCards, onImport, onClose }) {
         <div style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {sharedCards.slice(0, 5).map((c, i) => (
             <div key={i} style={{ background: '#1e293b', borderRadius: 8, padding: '8px 12px' }}>
-              <span style={{ color: '#818cf8', fontWeight: 700, fontSize: 13 }}>{c.mnemonic}</span>
+              <span style={{ color: '#818cf8', fontWeight: 700, fontSize: 13 }}>{c.mnemonic || c.answer}</span>
               <span style={{ color: '#64748b', fontSize: 12, marginLeft: 8 }}>{c.question}</span>
             </div>
           ))}
@@ -135,8 +134,7 @@ export default function App() {
         <div style={{
           position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
           background: '#6366f1', color: '#fff', borderRadius: 10,
-          padding: '10px 24px', fontSize: 14, fontWeight: 600, zIndex: 300,
-          whiteSpace: 'nowrap',
+          padding: '10px 24px', fontSize: 14, fontWeight: 600, zIndex: 300, whiteSpace: 'nowrap',
         }}>{importToast}</div>
       )}
     </div>
