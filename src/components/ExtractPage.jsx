@@ -1,7 +1,6 @@
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { isDuplicate, normQuestion } from '../utils/dedup'
 
-// utils/dedup에 누락되었던 classifyCard 함수를 여기서 직접 안전하게 구현합니다.
 function classifyCard(card, allCards) {
   if (!allCards || !Array.isArray(allCards)) return { type: 'new' };
   const isDup = allCards.some(c => isDuplicate(c, card));
@@ -14,7 +13,6 @@ function classifyCard(card, allCards) {
   return { type: 'new' };
 }
 
-// ── Gemini 호출 ──────────────────────────────────────────────
 const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
 
 const MNEMONIC_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
@@ -112,7 +110,6 @@ function repairJSON(str) {
   throw new Error('JSON 파싱 실패')
 }
 
-// ── 분류 색상 ────────────────────────────────────────────────
 const TYPE_META = {
   new:      { label: '새 카드',     color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: '#22c55e' },
   upgrade:  { label: '내용 보강',   color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: '#f59e0b' },
@@ -140,7 +137,94 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
   )
 }
 
-// ── 인라인 편집 가능한 카드 아이템 ───────────────────────────
+// ── 새 기능: 분류 그룹 일괄 편집 행 ───────────────────────────
+function GroupRow({ group, onApply, subjects, getParts }) {
+  const [draftSubj, setDraftSubj] = useState(group.subject === '미분류' ? '' : group.subject)
+  const [draftPart, setDraftPart] = useState(group.part === '미분류' ? '' : group.part)
+
+  useEffect(() => {
+    setDraftSubj(group.subject === '미분류' ? '' : group.subject)
+    setDraftPart(group.part === '미분류' ? '' : group.part)
+  }, [group])
+
+  const changed = draftSubj !== (group.subject === '미분류' ? '' : group.subject) || 
+                  draftPart !== (group.part === '미분류' ? '' : group.part)
+
+  const safeParts = typeof getParts === 'function' ? (getParts(draftSubj) || []) : []
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box', background: '#0f172a',
+    border: '1px solid #334155', borderRadius: 8, padding: '10px 12px',
+    color: '#e2e8f0', fontSize: 13, outline: 'none', minWidth: 0
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'rgba(15,23,42,0.6)', padding: '12px 16px', borderRadius: 12, marginBottom: 8, border: '1px solid #1e293b' }}>
+      <div style={{ flex: 1, display: 'flex', gap: 8, flexWrap: 'nowrap' }}>
+        <DataListInput id={`ge-sub-${group.subject}-${Math.random().toString(36).slice(2,6)}`} value={draftSubj} onChange={e => setDraftSubj(e.target.value)} placeholder="과목" style={inputStyle} options={subjects} />
+        <DataListInput id={`ge-part-${group.part}-${Math.random().toString(36).slice(2,6)}`} value={draftPart} onChange={e => setDraftPart(e.target.value)} placeholder="단원" style={inputStyle} options={safeParts} />
+      </div>
+      <div style={{ width: 44, textAlign: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 700 }}>{group.count}장</div>
+      <button
+        onClick={() => { if(changed) onApply(group.subject, group.part, draftSubj, draftPart) }}
+        disabled={!changed}
+        style={{
+          background: changed ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b',
+          color: changed ? '#fff' : '#64748b',
+          border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13,
+          cursor: changed ? 'pointer' : 'not-allowed', fontWeight: 700, flexShrink: 0
+        }}
+      >적용</button>
+    </div>
+  )
+}
+
+// ── 새 기능: 분류 일괄 정리 패널 ───────────────────────────
+function GroupEditorPanel({ extracted, onUpdateGroup, subjects, getParts }) {
+  const [open, setOpen] = useState(true)
+
+  const groups = useMemo(() => {
+    const map = new Map()
+    extracted.forEach(c => {
+      const subj = c.subject || '미분류'
+      const pt = c.part || '미분류'
+      const key = `${subj}|||${pt}`
+      if (!map.has(key)) map.set(key, { subject: subj, part: pt, count: 0 })
+      map.get(key).count++
+    })
+    return Array.from(map.values()).sort((a,b) => b.count - a.count)
+  }, [extracted])
+
+  if (groups.length === 0) return null
+
+  return (
+    <div style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 16, padding: '20px', marginBottom: 24, width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setOpen(!open)}>
+        <div>
+          <div style={{ color: '#e2e8f0', fontSize: 16, fontWeight: 800, marginBottom: 6 }}>
+            📁 감지된 폴더 일괄 정리
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: 13, wordBreak: 'keep-all' }}>
+            AI가 분류한 {groups.length}개의 폴더 그룹을 한 번에 수정할 수 있습니다.
+          </div>
+        </div>
+        <div style={{ color: '#818cf8', fontSize: 13, fontWeight: 700, background: 'rgba(99,102,241,0.1)', padding: '8px 14px', borderRadius: 10, whiteSpace: 'nowrap' }}>
+          {open ? '접기 ▲' : '펼치기 ▼'}
+        </div>
+      </div>
+      {open && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ maxHeight: 320, overflowY: 'auto', paddingRight: 4 }}>
+            {groups.map(g => (
+              <GroupRow key={`${g.subject}|||${g.part}`} group={g} onApply={onUpdateGroup} subjects={subjects} getParts={getParts} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── 인라인 편집 가능한 개별 카드 아이템 ───────────────────────────
 function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getParts }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
@@ -258,7 +342,6 @@ export default function ExtractPage({ cards, onImport }) {
   const [importMsg, setImportMsg] = useState('')
   const inputRef = useRef(null)
 
-  // 안전한 subjects 추출
   const allSubjects = useMemo(() => {
     let existing = []
     try { if (Array.isArray(cards?.subjects)) existing = cards.subjects } catch(e){}
@@ -266,7 +349,6 @@ export default function ExtractPage({ cards, onImport }) {
     return [...new Set([...existing, ...newSubjects])]
   }, [cards?.subjects, extracted])
 
-  // 안전한 parts 추출
   const getPartsForSubject = useCallback((subj) => {
     if (!subj) return []
     let existingParts = []
@@ -275,6 +357,18 @@ export default function ExtractPage({ cards, onImport }) {
     return [...new Set([...existingParts, ...newParts])]
   }, [cards, extracted])
 
+  const updateGroup = useCallback((oldSubj, oldPart, newSubj, newPart) => {
+    setExtracted(prev => prev.map(c => {
+      const s = c.subject || '미분류'
+      const p = c.part || '미분류'
+      if (s === oldSubj && p === oldPart) {
+        const updated = { ...c, subject: newSubj, part: newPart }
+        updated._type = classifyCard(updated, cards.allCards || []).type
+        return updated
+      }
+      return c
+    }))
+  }, [cards.allCards])
 
   const saveKey = (k) => { sessionStorage.setItem('gemini_key', k); setApiKey(k) }
 
@@ -298,9 +392,9 @@ export default function ExtractPage({ cards, onImport }) {
 
       const normalized = parsed.map((c) =>
         extractType === 'qa'
-          ? { subject: c.subject || '미분류', part: c.part || '미분류',
+          ? { subject: c.subject || '', part: c.part || '',
               question: c.question || '', mnemonic: '', detail: '', answer: c.answer || '' }
-          : c
+          : { ...c, subject: c.subject || '', part: c.part || '' }
       )
 
       const classified = normalized.map((c) => ({
@@ -545,6 +639,15 @@ export default function ExtractPage({ cards, onImport }) {
 
       {status === 'done' && (
         <div style={{ width: '100%' }}>
+
+          {/* ── 📁 감지된 폴더 일괄 정리 패널 ── */}
+          <GroupEditorPanel
+            extracted={extracted}
+            onUpdateGroup={updateGroup}
+            subjects={allSubjects}
+            getParts={getPartsForSubject}
+          />
+
           {/* 분류 탭 */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
             {[
