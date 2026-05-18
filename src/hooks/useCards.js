@@ -1,102 +1,79 @@
 import { useState, useEffect, useCallback } from 'react';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, query } from 'firebase/firestore';
-import { signInAnonymously, linkWithPopup, signInWithPopup, signOut } from 'firebase/auth';
-import { db, auth, googleProvider } from '../utils/firebase';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { db, auth } from '../utils/firebase';
 import { builtinCards } from '../data/mnemonics';
 import { isDuplicate } from '../utils/dedup';
 
 export function useCards() {
   const [userCards, setUserCards] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  const [uid, setUid] = useState(null);
 
   useEffect(() => {
-    let unsubscribeCards;
+    let unsubscribeSnapshot = null;
 
-    const unsubscribeAuth = auth.onAuthStateChanged(async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        const cardsRef = collection(db, 'users', currentUser.uid, 'cards');
-        const q = query(cardsRef);
-
-        if (unsubscribeCards) unsubscribeCards();
-
-        unsubscribeCards = onSnapshot(q, async (snapshot) => {
-          let fetched = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
-
-          // 로컬 스토리지 데이터 자동 백업 마이그레이션
-          const localRaw = localStorage.getItem('mnemonic_user_cards');
-          if (localRaw && fetched.length === 0) {
-            try {
-              const localCards = JSON.parse(localRaw);
-              if (localCards.length > 0) {
-                const batch = writeBatch(db);
-                localCards.forEach(card => {
-                  const docId = card.id || doc(collection(db, 'dummy')).id; 
-                  const docRef = doc(db, 'users', currentUser.uid, 'cards', docId);
-                  batch.set(docRef, { ...card, id: docId });
-                });
-                await batch.commit();
-                localStorage.removeItem('mnemonic_user_cards');
-                fetched = localCards;
-              }
-            } catch(e) { console.error(e); }
-          }
-          setUserCards(fetched);
-          setLoading(false);
-        });
-      } else {
-        // 인증 상태가 없으면 백그라운드 익명 로그인 실행
+    // 1. Auth 인증 상태 변화를 먼저 감시 (새로고침 시 세션 복구 속도 최적화)
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      // 로그인된 유저가 없다면 익명 로그인 수행
+      if (!user) {
         try {
           await signInAnonymously(auth);
-        } catch (error) {
-          console.error("Anonymous Auth Error:", error);
+        } catch (err) {
+          console.error("익명 로그인 실패:", err);
           setLoading(false);
         }
+        return;
       }
+
+      // 유저가 확실히 존재할 때 UID 바인딩
+      const currentUid = user.uid;
+      setUid(currentUid);
+
+      // 혹시 기존에 연결된 스냅샷 리스너가 있다면 중복 방지를 위해 해제
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+      }
+
+      // 2. 인증이 완료된 시점에만 확실하게 Firestore 리스너 연결
+      const cardsRef = collection(db, 'users', currentUid, 'cards');
+      const q = query(cardsRef);
+
+      unsubscribeSnapshot = onSnapshot(q, async (snapshot) => {
+        let fetched = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+
+        // 로컬 데이터 자동 마이그레이션 이관 로직
+        const localRaw = localStorage.getItem('mnemonic_user_cards');
+        if (localRaw && fetched.length === 0) {
+          try {
+            const localCards = JSON.parse(localRaw);
+            if (localCards.length > 0) {
+              const batch = writeBatch(db);
+              localCards.forEach(card => {
+                const docId = card.id || doc(collection(db, 'dummy')).id; 
+                const docRef = doc(db, 'users', currentUid, 'cards', docId);
+                batch.set(docRef, { ...card, id: docId });
+              });
+              await batch.commit();
+              localStorage.removeItem('mnemonic_user_cards');
+              fetched = localCards;
+            }
+          } catch(e) { console.error("마이그레이션 실패:", e); }
+        }
+
+        setUserCards(fetched);
+        setLoading(false); // 실제 서버 혹은 캐시 데이터가 들어온 직후 로딩 해제
+      }, (error) => {
+        console.error("Firestore 리스너 오류:", error);
+        setLoading(false);
+      });
     });
 
+    // 컴포넌트 언마운트 시 리스너 누수 방지 (가장 중요)
     return () => {
       if (unsubscribeAuth) unsubscribeAuth();
-      if (unsubscribeCards) unsubscribeCards();
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
     };
-  }, []);
-
-  const uid = user?.uid || null;
-  const isAnonymous = user?.isAnonymous || false;
-  const userEmail = user?.email || null;
-
-  // 구글 계정 연동 및 로그인 처리
-  const loginWithGoogle = useCallback(async () => {
-    if (!auth.currentUser) return;
-
-    if (auth.currentUser.isAnonymous) {
-      try {
-        // 익명 계정에 구글 계정 링크 (기존 데이터 보존)
-        await linkWithPopup(auth.currentUser, googleProvider);
-        alert('구글 계정 연동에 성공했습니다! 이제 다른 기기에서도 데이터가 동기화됩니다.');
-      } catch (error) {
-        // 이미 해당 구글 계정으로 가입된 이력이 있는 경우 전환 로그인 처리
-        if (error.code === 'auth/credential-already-in-use') {
-          if (window.confirm('이미 가입된 구글 계정입니다. 해당 계정으로 전환하시겠습니까?\n(주의: 현재 기기에 저장된 임시 데이터는 유실될 수 있습니다)')) {
-            await signInWithPopup(auth, googleProvider);
-          }
-        } else {
-          console.error("Google Link Error:", error);
-          alert("연동 실패: " + error.message);
-        }
-      }
-    } else {
-      await signInWithPopup(auth, googleProvider);
-    }
-  }, []);
-
-  const handleLogout = useCallback(async () => {
-    if (window.confirm('로그아웃 하시겠습니까?\n익명 상태일 경우 로그아웃 시 데이터가 모두 유실될 수 있습니다.')) {
-      await signOut(auth);
-      setUser(null);
-      setLoading(true);
-    }
   }, []);
 
   const allCards = [...builtinCards, ...userCards];
@@ -212,7 +189,6 @@ export function useCards() {
 
   return {
     allCards, userCards, builtinCards, loading,
-    isAnonymous, userEmail, loginWithGoogle, handleLogout, // 내보내기 항목 추가
     addCard, addCards, deleteCard, updateCard,
     moveCard: reorderCard, reorderCard, deleteBy, countBy,
     exportJSON, importJSON, deduplicateSelf, duplicateCount,
