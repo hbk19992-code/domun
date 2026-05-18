@@ -13,9 +13,8 @@ export function useCards() {
   useEffect(() => {
     let unsubscribeSnapshot = null;
 
-    // 1. Auth 인증 상태 변화를 먼저 감시 (새로고침 시 세션 복구 속도 최적화)
+    // 1. Auth 인증 상태 변화를 먼저 감시
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      // 로그인된 유저가 없다면 익명 로그인 수행
       if (!user) {
         try {
           await signInAnonymously(auth);
@@ -26,23 +25,21 @@ export function useCards() {
         return;
       }
 
-      // 유저가 확실히 존재할 때 UID 바인딩
       const currentUid = user.uid;
       setUid(currentUid);
 
-      // 혹시 기존에 연결된 스냅샷 리스너가 있다면 중복 방지를 위해 해제
       if (unsubscribeSnapshot) {
         unsubscribeSnapshot();
       }
 
-      // 2. 인증이 완료된 시점에만 확실하게 Firestore 리스너 연결
+      // 2. 인증이 확실히 끝난 시점에만 Firestore 리스너 연결
       const cardsRef = collection(db, 'users', currentUid, 'cards');
       const q = query(cardsRef);
 
       unsubscribeSnapshot = onSnapshot(q, async (snapshot) => {
         let fetched = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
 
-        // 로컬 데이터 자동 마이그레이션 이관 로직
+        // [마이그레이션] 옛날 로컬스토리지에 데이터가 남아있다면 클라우드로 자동 이관
         const localRaw = localStorage.getItem('mnemonic_user_cards');
         if (localRaw && fetched.length === 0) {
           try {
@@ -55,21 +52,20 @@ export function useCards() {
                 batch.set(docRef, { ...card, id: docId });
               });
               await batch.commit();
-              localStorage.removeItem('mnemonic_user_cards');
+              localStorage.removeItem('mnemonic_user_cards'); // 이관 완료 후 삭제
               fetched = localCards;
             }
           } catch(e) { console.error("마이그레이션 실패:", e); }
         }
 
         setUserCards(fetched);
-        setLoading(false); // 실제 서버 혹은 캐시 데이터가 들어온 직후 로딩 해제
+        setLoading(false); // 데이터 로드 완료 시 로딩 해제
       }, (error) => {
         console.error("Firestore 리스너 오류:", error);
         setLoading(false);
       });
     });
 
-    // 컴포넌트 언마운트 시 리스너 누수 방지 (가장 중요)
     return () => {
       if (unsubscribeAuth) unsubscribeAuth();
       if (unsubscribeSnapshot) unsubscribeSnapshot();
@@ -188,7 +184,7 @@ export function useCards() {
   const parts = (subject) => [...new Set(allCards.filter((c) => c.subject === subject).map((c) => c.part))];
 
   return {
-    allCards, userCards, builtinCards, loading,
+    allCards, userCards, builtinCards, loading, // loading 반환 필수!
     addCard, addCards, deleteCard, updateCard,
     moveCard: reorderCard, reorderCard, deleteBy, countBy,
     exportJSON, importJSON, deduplicateSelf, duplicateCount,
