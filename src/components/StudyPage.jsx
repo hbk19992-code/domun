@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { loadSRS, saveSRS, reviewEntry, isDue, dueLabel } from '../utils/srs'
+import { isDue, dueLabel } from '../utils/srs'
 import { useTTS, ttsMnemonic, ttsDetail } from '../hooks/useTTS'
+import { useCloudSRS } from '../hooks/useCloudSRS'
 
 const STATUS = {
   unknown: { label: '모름',   emoji: '✗', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
@@ -125,20 +126,20 @@ export default function StudyPage({ cards }) {
   const [idx, setIdx] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [shuffled, setShuffled] = useState(false)
-  const [srs, setSrs] = useState(loadSRS)
+
+  // ✨ 클라우드 진행률 동기화 적용
+  const { srs, srsLoading, review: cloudReview } = useCloudSRS()
+
   const [listenMode, setListenMode] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [rate, setRate] = useState(1)
   const { speak, stop, supported: ttsSupported } = useTTS()
 
+  // ✨ 클라우드 업데이트 함수 적용
   const review = useCallback((card, result) => {
-    const key = getCardKey(card)
-    setSrs((prev) => {
-      const next = { ...prev, [key]: reviewEntry(prev[key], result) }
-      saveSRS(next)
-      return next
-    })
-  }, [])
+    cloudReview(card, result, getCardKey)
+  }, [cloudReview])
+
   const entryOf = useCallback((card) => srs[getCardKey(card)], [srs])
 
   const partOptions = useMemo(() => {
@@ -204,6 +205,17 @@ export default function StudyPage({ cards }) {
 
   const togglePlay = () => { if (playing) { setPlaying(false); stop() } else setPlaying(true) }
   const exitListen = () => { setPlaying(false); stop(); setListenMode(false) }
+
+  // ✨ 클라우드 데이터가 아직 로딩 중일 때 처리
+  if (srsLoading) {
+    return (
+      <div style={S.empty}>
+        <div style={{ fontSize: 44, marginBottom: 14 }}>☁️</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>동기화 중...</div>
+        <div style={{ color: '#334155', fontSize: 14 }}>클라우드에서 학습 진행률을 불러오고 있습니다</div>
+      </div>
+    )
+  }
 
   if (allCards.length === 0) {
     return (
