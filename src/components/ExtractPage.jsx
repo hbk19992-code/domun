@@ -1,11 +1,11 @@
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
+import { useState, useRef, useCallback, useMemo, useEffect, useId } from 'react'
 import { isDuplicate, normQuestion } from '../utils/dedup'
 
 function classifyCard(card, allCards) {
   if (!allCards || !Array.isArray(allCards)) return { type: 'new' };
   const isDup = allCards.some(c => isDuplicate(c, card));
   if (isDup) return { type: 'existing' };
-  
+
   const qNorm = normQuestion(card.question);
   if (qNorm && allCards.some(c => normQuestion(c.question) === qNorm)) {
     return { type: 'upgrade' };
@@ -122,7 +122,7 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
   return (
     <div style={{ flex: 1, width: '100%', minWidth: 0 }}>
       <input
-        style={{...style, minWidth: 0}}
+        style={{ ...style, minWidth: 0 }}
         value={value || ''}
         onChange={onChange}
         placeholder={placeholder}
@@ -137,8 +137,9 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
   )
 }
 
-// ── 새 기능: 분류 그룹 일괄 편집 행 ───────────────────────────
+// ── 분류 그룹 일괄 편집 행 ───────────────────────────
 function GroupRow({ group, onApply, subjects, getParts }) {
+  const uid = useId()  // 안정적인 datalist id (렌더마다 바뀌지 않음)
   const [draftSubj, setDraftSubj] = useState(group.subject === '미분류' ? '' : group.subject)
   const [draftPart, setDraftPart] = useState(group.part === '미분류' ? '' : group.part)
 
@@ -147,7 +148,7 @@ function GroupRow({ group, onApply, subjects, getParts }) {
     setDraftPart(group.part === '미분류' ? '' : group.part)
   }, [group])
 
-  const changed = draftSubj !== (group.subject === '미분류' ? '' : group.subject) || 
+  const changed = draftSubj !== (group.subject === '미분류' ? '' : group.subject) ||
                   draftPart !== (group.part === '미분류' ? '' : group.part)
 
   const safeParts = typeof getParts === 'function' ? (getParts(draftSubj) || []) : []
@@ -160,12 +161,12 @@ function GroupRow({ group, onApply, subjects, getParts }) {
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'rgba(15,23,42,0.6)', padding: '12px 16px', borderRadius: 12, marginBottom: 8, border: '1px solid #1e293b' }}>
       <div style={{ flex: 1, display: 'flex', gap: 8, flexWrap: 'nowrap' }}>
-        <DataListInput id={`ge-sub-${group.subject}-${Math.random().toString(36).slice(2,6)}`} value={draftSubj} onChange={e => setDraftSubj(e.target.value)} placeholder="과목" style={inputStyle} options={subjects} />
-        <DataListInput id={`ge-part-${group.part}-${Math.random().toString(36).slice(2,6)}`} value={draftPart} onChange={e => setDraftPart(e.target.value)} placeholder="단원" style={inputStyle} options={safeParts} />
+        <DataListInput id={`ge-sub-${uid}`} value={draftSubj} onChange={e => setDraftSubj(e.target.value)} placeholder="과목" style={inputStyle} options={subjects} />
+        <DataListInput id={`ge-part-${uid}`} value={draftPart} onChange={e => setDraftPart(e.target.value)} placeholder="단원" style={inputStyle} options={safeParts} />
       </div>
       <div style={{ width: 44, textAlign: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 700 }}>{group.count}장</div>
       <button
-        onClick={() => { if(changed) onApply(group.subject, group.part, draftSubj, draftPart) }}
+        onClick={() => { if (changed) onApply(group.subject, group.part, draftSubj, draftPart) }}
         disabled={!changed}
         style={{
           background: changed ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b',
@@ -178,7 +179,7 @@ function GroupRow({ group, onApply, subjects, getParts }) {
   )
 }
 
-// ── 새 기능: 분류 일괄 정리 패널 ───────────────────────────
+// ── 분류 일괄 정리 패널 ───────────────────────────
 function GroupEditorPanel({ extracted, onUpdateGroup, subjects, getParts }) {
   const [open, setOpen] = useState(true)
 
@@ -191,7 +192,7 @@ function GroupEditorPanel({ extracted, onUpdateGroup, subjects, getParts }) {
       if (!map.has(key)) map.set(key, { subject: subj, part: pt, count: 0 })
       map.get(key).count++
     })
-    return Array.from(map.values()).sort((a,b) => b.count - a.count)
+    return Array.from(map.values()).sort((a, b) => b.count - a.count)
   }, [extracted])
 
   if (groups.length === 0) return null
@@ -226,6 +227,7 @@ function GroupEditorPanel({ extracted, onUpdateGroup, subjects, getParts }) {
 
 // ── 인라인 편집 가능한 개별 카드 아이템 ───────────────────────────
 function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getParts }) {
+  const uid = useId()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
   const meta = TYPE_META[type] || TYPE_META.new
@@ -263,8 +265,8 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getP
         width: '100%', boxSizing: 'border-box', cursor: 'default'
       }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap', width: '100%' }}>
-          <DataListInput id={`ext-sub-${card.question || Math.random().toString(36)}`} value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="과목" style={inputStyle} options={safeSubjects} />
-          <DataListInput id={`ext-part-${card.question || Math.random().toString(36)}`} value={draft.part} onChange={(e) => setDraft({ ...draft, part: e.target.value })} placeholder="단원" style={inputStyle} options={safeParts} />
+          <DataListInput id={`ext-sub-${uid}`} value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="과목" style={inputStyle} options={safeSubjects} />
+          <DataListInput id={`ext-part-${uid}`} value={draft.part} onChange={(e) => setDraft({ ...draft, part: e.target.value })} placeholder="단원" style={inputStyle} options={safeParts} />
         </div>
         <input style={inputStyle} value={draft.question || ''} onChange={(e) => setDraft({ ...draft, question: e.target.value })} placeholder="질문" />
         {isQA ? (
@@ -340,7 +342,21 @@ export default function ExtractPage({ cards, onImport }) {
   const [progress, setProgress] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [importMsg, setImportMsg] = useState('')
+  const [loadingPct, setLoadingPct] = useState(0)
   const inputRef = useRef(null)
+
+  // 로딩 중 퍼센티지 애니메이션 (0 → 92%까지 점근, 완료 시 100%)
+  useEffect(() => {
+    if (status !== 'loading') {
+      if (status === 'done') setLoadingPct(100)
+      return
+    }
+    setLoadingPct(0)
+    const iv = setInterval(() => {
+      setLoadingPct((p) => Math.min(92, p + Math.max(0.4, (92 - p) * 0.04)))
+    }, 350)
+    return () => clearInterval(iv)
+  }, [status])
 
   const allSubjects = useMemo(() => {
     let existing = []
@@ -465,7 +481,7 @@ export default function ExtractPage({ cards, onImport }) {
 
   const toggleAll = () => {
     const visibleIdxs = visible.map(({ i }) => i)
-    const allChecked = visibleIdxs.every((i) => selected.has(i))
+    const allChecked = visibleIdxs.length > 0 && visibleIdxs.every((i) => selected.has(i))
     setSelected((prev) => {
       const n = new Set(prev)
       visibleIdxs.forEach((i) => allChecked ? n.delete(i) : n.add(i))
@@ -473,16 +489,16 @@ export default function ExtractPage({ cards, onImport }) {
     })
   }
 
+  // ✅ 버그 수정: addCards 의 반환값(실제 추가 개수)을 직접 사용.
+  //   기존 코드는 setTimeout 안에서 stale 한 cards.allCards 를 읽어
+  //   추가 개수가 항상 0으로 표시됐음.
   const doImport = () => {
     const toAdd = extracted.filter((c, i) => selected.has(i)).map(({ _type, ...c }) => c)
-    const before = (cards.allCards || []).length
-    cards.addCards(toAdd)
-    setTimeout(() => {
-      const added = (cards.allCards || []).length - before
-      const skipped = toAdd.length - added
-      setImportMsg(skipped > 0 ? `✓ ${added}개 추가 (중복 ${skipped}개 제외)` : `✓ ${added}개 추가됨`)
-      setTimeout(() => { setImportMsg(''); onImport() }, 1500)
-    }, 50)
+    if (toAdd.length === 0) return
+    const added = cards.addCards(toAdd)
+    const skipped = toAdd.length - added
+    setImportMsg(skipped > 0 ? `✓ ${added}개 추가 (중복 ${skipped}개 제외)` : `✓ ${added}개 추가됨`)
+    setTimeout(() => { setImportMsg(''); onImport() }, 1500)
   }
 
   const reset = () => {
@@ -621,9 +637,15 @@ export default function ExtractPage({ cards, onImport }) {
         </>
       )}
 
+      {/* 로딩 — 퍼센티지 진행 바 */}
       {status === 'loading' && (
-        <div style={{ background: 'rgba(15,23,42,0.8)', border: '1px solid #1e293b', borderRadius: 16, padding: '60px 32px', textAlign: 'center', width: '100%', boxSizing: 'border-box' }}>
-          <div style={{ width: 40, height: 40, border: '3px solid #1e293b', borderTop: '3px solid #6366f1', borderRadius: '50%', margin: '0 auto 20px', animation: 'spin 1s linear infinite' }} />
+        <div style={{ background: 'rgba(15,23,42,0.8)', border: '1px solid #1e293b', borderRadius: 16, padding: '48px 32px', textAlign: 'center', width: '100%', boxSizing: 'border-box' }}>
+          <div style={{ fontSize: 50, fontWeight: 800, color: '#6366f1', marginBottom: 8, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>
+            {Math.round(loadingPct)}%
+          </div>
+          <div style={{ background: '#0f172a', borderRadius: 8, height: 6, margin: '0 auto 24px', width: '100%', maxWidth: 300, overflow: 'hidden' }}>
+            <div style={{ background: 'linear-gradient(90deg,#6366f1,#8b5cf6)', height: '100%', borderRadius: 8, width: `${loadingPct}%`, transition: 'width 0.35s ease' }} />
+          </div>
           <div style={{ color: '#94a3b8', fontSize: 14 }}>{progress}</div>
           {file && <div style={{ color: '#475569', fontSize: 12, marginTop: 6, wordBreak: 'break-all' }}>{file.name}</div>}
         </div>
@@ -640,7 +662,7 @@ export default function ExtractPage({ cards, onImport }) {
       {status === 'done' && (
         <div style={{ width: '100%' }}>
 
-          {/* ── 📁 감지된 폴더 일괄 정리 패널 ── */}
+          {/* 📁 감지된 폴더 일괄 정리 패널 */}
           <GroupEditorPanel
             extracted={extracted}
             onUpdateGroup={updateGroup}
@@ -668,7 +690,7 @@ export default function ExtractPage({ cards, onImport }) {
               marginLeft: 'auto', background: 'none', border: '1px solid #1e293b',
               borderRadius: 8, padding: '5px 12px', color: '#475569', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap'
             }}>
-              {visible.every(({ i }) => selected.has(i)) ? '전체 해제' : '전체 선택'}
+              {visible.length > 0 && visible.every(({ i }) => selected.has(i)) ? '전체 해제' : '전체 선택'}
             </button>
           </div>
 
