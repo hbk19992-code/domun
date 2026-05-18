@@ -434,7 +434,14 @@ export default function ManagePage({ cards }) {
     try {
       const encoded = await encodeCards(target)
       const url = buildShareUrl(encoded)
-      if (url.length > 15000) { showToast('카드가 너무 많습니다. "내 카드만"으로 시도해보세요.', '#f59e0b'); setSharing(false); return }
+      if (url.length > 8000) {
+        showToast('카드가 많아 링크가 너무 깁니다. "내 카드만" 또는 단원별로 나눠 공유하거나, JSON 내보내기를 이용하세요.', '#f59e0b')
+        setSharing(false)
+        return
+      }
+      if (url.length > 4000) {
+        showToast('링크가 다소 깁니다 — 메신저에서 잘릴 수 있으니 JSON 파일 공유를 권장합니다.', '#f59e0b')
+      }
       setShareUrl(url)
     } catch { showToast('링크 생성 실패', '#ef4444') }
     setSharing(false)

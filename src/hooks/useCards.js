@@ -10,8 +10,33 @@ function loadUserCards() {
     return raw ? JSON.parse(raw) : []
   } catch { return [] }
 }
+
+// localStorage 저장 — 용량 초과(QuotaExceededError) 등 예외를 잡아
+// 데이터가 조용히 사라지는 것을 막고 사용자에게 즉시 경고한다.
+let _quotaAlerted = false
 function saveUserCards(cards) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cards))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cards))
+    return true
+  } catch (e) {
+    const quota = e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014)
+    // React 업데이트 함수 바깥에서 알림 (렌더 중 alert 방지)
+    setTimeout(() => {
+      if (quota) {
+        if (_quotaAlerted) return
+        _quotaAlerted = true
+        alert(
+          '⚠️ 저장 공간이 가득 찼습니다.\n\n' +
+          '방금 추가한 카드가 브라우저에 저장되지 못했습니다. ' +
+          '데이터 유실을 막으려면 지금 바로 [관리 → JSON 내보내기]로 백업하세요.\n\n' +
+          '이후 불필요한 카드를 줄이거나 단원별로 나눠 관리해 주세요.'
+        )
+      } else {
+        alert('⚠️ 카드 저장 중 오류가 발생했습니다. [관리 → JSON 내보내기]로 백업을 권장합니다.')
+      }
+    }, 0)
+    return false
+  }
 }
 
 function dedupList(cards) {

@@ -1,5 +1,3 @@
-// URL 해시에 카드 데이터를 압축해서 넣고 꺼내는 유틸
-
 async function compress(str) {
   try {
     const stream = new CompressionStream('deflate-raw')
@@ -10,12 +8,10 @@ async function compress(str) {
     return btoa(String.fromCharCode(...new Uint8Array(buf)))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
   } catch {
-    // 구형 브라우저 fallback
     return btoa(encodeURIComponent(str))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
   }
 }
-
 async function decompress(b64) {
   const padded = b64.replace(/-/g, '+').replace(/_/g, '/') + '=='.slice((b64.length * 3) % 4 || 4)
   const binary = atob(padded)
@@ -31,29 +27,15 @@ async function decompress(b64) {
     return decodeURIComponent(atob(padded))
   }
 }
-
-export async function encodeCards(cards) {
-  const json = JSON.stringify(cards)
-  const encoded = await compress(json)
-  return encoded
-}
-
-export async function decodeCards(encoded) {
-  const json = await decompress(encoded)
-  return JSON.parse(json)
-}
-
+export async function encodeCards(cards) { return compress(JSON.stringify(cards)) }
+export async function decodeCards(encoded) { return JSON.parse(await decompress(encoded)) }
 export function buildShareUrl(encoded) {
-  const base = window.location.origin + window.location.pathname
-  return `${base}#s=${encoded}`
+  return `${window.location.origin + window.location.pathname}#s=${encoded}`
 }
-
 export function getShareParam() {
-  const hash = window.location.hash
-  const match = hash.match(/^#s=(.+)$/)
-  return match ? match[1] : null
+  const m = window.location.hash.match(/^#s=(.+)$/)
+  return m ? m[1] : null
 }
-
 export function clearShareParam() {
   history.replaceState(null, '', window.location.pathname)
 }

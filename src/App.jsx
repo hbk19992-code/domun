@@ -90,8 +90,16 @@ export default function App() {
     const param = getShareParam()
     if (!param) return
     decodeCards(param)
-      .then((decoded) => { if (Array.isArray(decoded) && decoded.length > 0) setSharedCards(decoded) })
-      .catch(() => {})
+      .then((decoded) => {
+        if (Array.isArray(decoded) && decoded.length > 0) setSharedCards(decoded)
+        else throw new Error('empty')
+      })
+      .catch(() => {
+        // 손상되거나 잘린 공유 링크 — 앱이 멈추지 않도록 안전하게 처리
+        clearShareParam()
+        setImportToast('공유 링크가 손상되어 카드를 불러올 수 없습니다')
+        setTimeout(() => setImportToast(''), 4000)
+      })
   }, [])
 
   const handleShareImport = () => {

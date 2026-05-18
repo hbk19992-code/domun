@@ -15,6 +15,9 @@ function classifyCard(card, allCards) {
 
 const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
 
+// 파일 업로드 최대 크기 (Gemini inline data 한계 ~20MB / base64 약 1.33배 팽창 고려)
+const MAX_FILE_MB = 15
+
 const MNEMONIC_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
 
 【절대 규칙】
@@ -114,12 +117,13 @@ async function extractWithRetry(apiKey, parts, systemPrompt, setProgress) {
   }
 }
 
+// JSON 파싱. 응답이 잘렸으면 복구하되 truncated=true 로 알린다.
 function repairJSON(str) {
-  try { return JSON.parse(str) } catch {}
+  try { return { data: JSON.parse(str), truncated: false } } catch {}
   const last = str.lastIndexOf('},')
-  if (last > 0) try { return JSON.parse(str.slice(0, last + 1) + ']') } catch {}
+  if (last > 0) try { return { data: JSON.parse(str.slice(0, last + 1) + ']'), truncated: true } } catch {}
   const brace = str.lastIndexOf('}')
-  if (brace > 0) try { return JSON.parse(str.slice(0, brace + 1) + ']') } catch {}
+  if (brace > 0) try { return { data: JSON.parse(str.slice(0, brace + 1) + ']'), truncated: true } } catch {}
   throw new Error('JSON 파싱 실패')
 }
 
@@ -356,6 +360,7 @@ export default function ExtractPage({ cards, onImport }) {
   const [errorMsg, setErrorMsg] = useState('')
   const [importMsg, setImportMsg] = useState('')
   const [loadingPct, setLoadingPct] = useState(0)
+  const [truncated, setTruncated] = useState(false)
   const inputRef = useRef(null)
 
   // 로딩 중 퍼센티지 애니메이션 (0 → 92%까지 점근, 완료 시 100%)
@@ -409,13 +414,13 @@ export default function ExtractPage({ cards, onImport }) {
   })
 
   const runExtraction = useCallback(async (parts, label) => {
-    setStatus('loading'); setExtracted([]); setSelected(new Set()); setErrorMsg('')
+    setStatus('loading'); setExtracted([]); setSelected(new Set()); setErrorMsg(''); setTruncated(false)
     try {
       setProgress(`${label} 읽는 중...`)
       const prompt = extractType === 'qa' ? QA_PROMPT : MNEMONIC_PROMPT
       const raw = (await extractWithRetry(apiKey, parts, prompt, setProgress))
         .replace(/```json|```/g, '').trim()
-      const parsed = repairJSON(raw)
+      const { data: parsed, truncated: wasTruncated } = repairJSON(raw)
       if (!Array.isArray(parsed) || parsed.length === 0)
         throw new Error(extractType === 'qa' ? '핵심 내용을 찾지 못했습니다.' : '두문자 카드를 찾지 못했습니다.')
 
@@ -435,6 +440,7 @@ export default function ExtractPage({ cards, onImport }) {
       setSelected(new Set(
         classified.map((c, i) => i).filter((i) => classified[i]._type !== 'existing')
       ))
+      setTruncated(wasTruncated)
       setFilterTab('new')
       setStatus('done')
     } catch (e) {
@@ -446,6 +452,16 @@ export default function ExtractPage({ cards, onImport }) {
   const handleFile = useCallback(async (f) => {
     if (!apiKey) return
     setFile(f)
+    // 파일 크기 검증 — 너무 크면 브라우저 멈춤/HTTP 413 발생
+    const sizeMB = f.size / (1024 * 1024)
+    if (sizeMB > MAX_FILE_MB) {
+      setErrorMsg(
+        `파일이 너무 큽니다 (${sizeMB.toFixed(1)}MB). 최대 ${MAX_FILE_MB}MB까지 업로드할 수 있습니다.\n` +
+        `교재를 단원별로 나눠서 올려주세요.`
+      )
+      setStatus('error')
+      return
+    }
     const ext = f.name.split('.').pop().toLowerCase()
     let parts
     if (ext === 'txt') {
@@ -516,7 +532,7 @@ export default function ExtractPage({ cards, onImport }) {
 
   const reset = () => {
     setFile(null); setStatus('idle'); setExtracted([]); setSelected(new Set())
-    setErrorMsg(''); setTextInput('')
+    setErrorMsg(''); setTextInput(''); setTruncated(false)
   }
 
   const ikey = (
@@ -619,6 +635,9 @@ export default function ExtractPage({ cards, onImport }) {
                 PDF, Word, TXT 파일을 끌어다 놓거나<br />
                 <span style={{ color: '#818cf8', fontWeight: 600 }}>클릭하여 선택</span>
               </div>
+              <div style={{ color: '#475569', fontSize: 11, marginTop: 10, lineHeight: 1.6, wordBreak: 'keep-all' }}>
+                교재 전체보다 <b style={{ color: '#64748b' }}>단원·절 단위</b>로 나눠 올리면 누락 없이 정확합니다 (최대 {MAX_FILE_MB}MB)
+              </div>
             </div>
           ) : (
             <div style={{ width: '100%', boxSizing: 'border-box' }}>
@@ -674,6 +693,14 @@ export default function ExtractPage({ cards, onImport }) {
 
       {status === 'done' && (
         <div style={{ width: '100%' }}>
+
+          {/* AI 응답 잘림 경고 */}
+          {truncated && (
+            <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: 12, padding: '14px 16px', marginBottom: 16, color: '#fbbf24', fontSize: 13, lineHeight: 1.6 }}>
+              ⚠️ <b>AI 응답이 중간에 잘렸습니다.</b> 문서 뒷부분의 카드가 누락됐을 수 있습니다.
+              누락이 의심되면 교재를 <b>단원(절) 단위로 나눠서</b> 다시 추출해 주세요.
+            </div>
+          )}
 
           {/* 📁 감지된 폴더 일괄 정리 패널 */}
           <GroupEditorPanel
