@@ -330,6 +330,36 @@ export default function ManagePage({ cards }) {
     setSelectedIds(allSelected ? new Set() : new Set(ids))
   }
 
+  // 카드 배열을 JSON 파일로 다운로드
+  const downloadJSON = (cardList, filename) => {
+    const blob = new Blob([JSON.stringify(cardList, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  // 선택한 과목/단원/카드를 JSON으로 내보내기
+  const handleMultiExport = () => {
+    let list = []
+    let label = '선택'
+    if (selectMode === 'card') {
+      list = userCards.filter((c) => selectedIds.has(c.id))
+    } else if (selectMode === 'part') {
+      list = userCards.filter((c) => safeStr(c.subject) === safeStr(currentSubject) && selectedIds.has(safeStr(c.part)))
+      label = selectedIds.size === 1 ? [...selectedIds][0] : (currentSubject || '단원')
+    } else if (selectMode === 'subject') {
+      list = userCards.filter((c) => selectedIds.has(safeStr(c.subject)))
+      label = selectedIds.size === 1 ? [...selectedIds][0] : '과목'
+    }
+    if (list.length === 0) { showToast('내보낼 카드가 없습니다', '#ef4444'); return }
+    const safe = (label || 'export').replace(/[\\/:*?"<>|]/g, '_')
+    downloadJSON(list, `domun_${safe}_${new Date().toISOString().slice(0, 10)}.json`)
+    showToast(`✓ ${list.length}장 내보냄`, '#22c55e')
+    exitSelectMode()
+  }
+
   const handleMultiDelete = () => {
     if (!confirmMultiDel) { setConfirmMultiDel(true); return }
     const n = selectedIds.size
@@ -783,22 +813,26 @@ export default function ManagePage({ cards }) {
         <div style={{
           position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)',
           background: '#1e293b', border: '1px solid #334155', borderRadius: 14,
-          padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8,
-          zIndex: 400, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', maxWidth: '92vw',
+          padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 7,
+          zIndex: 400, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', maxWidth: '94vw', flexWrap: 'wrap', justifyContent: 'center',
         }}>
-          <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 700, padding: '0 6px', whiteSpace: 'nowrap' }}>
+          <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 700, padding: '0 4px', whiteSpace: 'nowrap' }}>
             {selectedIds.size}개 선택
           </span>
           {selectMode !== 'subject' && (
             <button onClick={() => setMoveTarget(selectMode === 'part'
               ? { type: 'multi-part', count: selectedIds.size }
               : { type: 'multi', count: selectedIds.size })}
-              style={{ background: 'linear-gradient(135deg,#0284c7,#38bdf8)', color: '#fff', border: 'none', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              style={{ background: 'linear-gradient(135deg,#0284c7,#38bdf8)', color: '#fff', border: 'none', borderRadius: 9, padding: '8px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               🚀 이동
             </button>
           )}
+          <button onClick={handleMultiExport}
+            style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.4)', borderRadius: 9, padding: '8px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            📤 내보내기
+          </button>
           <button onClick={handleMultiDelete}
-            style={{ background: confirmMultiDel ? '#ef4444' : 'rgba(239,68,68,0.15)', color: confirmMultiDel ? '#fff' : '#f87171', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            style={{ background: confirmMultiDel ? '#ef4444' : 'rgba(239,68,68,0.15)', color: confirmMultiDel ? '#fff' : '#f87171', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 9, padding: '8px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             {confirmMultiDel ? '정말 삭제?' : '🗑 삭제'}
           </button>
           <button onClick={exitSelectMode}
