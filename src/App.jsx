@@ -125,9 +125,18 @@ export default function App() {
         </nav>
       </header>
       <main style={S.content}>
-        {tab === 'study'   && <StudyPage   cards={cards} />}
-        {tab === 'extract' && <ExtractPage cards={cards} onImport={() => setTab('study')} />}
-        {tab === 'manage'  && <ManagePage  cards={cards} />}
+        {cards.loading ? (
+          <div style={{ textAlign: 'center', padding: '100px 0', color: '#64748b' }}>
+            <div style={{ fontSize: 40, marginBottom: 16 }}>☁️</div>
+            <div>데이터를 동기화하는 중입니다...</div>
+          </div>
+        ) : (
+          <>
+            {tab === 'study'   && <StudyPage   cards={cards} />}
+            {tab === 'extract' && <ExtractPage cards={cards} onImport={() => setTab('study')} />}
+            {tab === 'manage'  && <ManagePage  cards={cards} />}
+          </>
+        )}
       </main>
 
       {sharedCards && (
