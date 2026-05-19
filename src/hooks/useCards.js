@@ -139,6 +139,28 @@ export function useCards() {
     }).length
   , [userCards]);
 
+  // 폴더(과목/단원) 이름 일괄 변경 함수
+  const renameFolder = useCallback(async ({ oldSubject, oldPart, newSubject, newPart }) => {
+    if (!uid) return 0;
+    const batch = writeBatch(db);
+    let updatedCount = 0;
+
+    userCards.forEach((c) => {
+      const matchSub = oldSubject === '전체' || c.subject === oldSubject;
+      const matchPart = oldPart === '전체' || c.part === oldPart;
+      if (matchSub && matchPart) {
+        batch.update(doc(db, 'users', uid, 'cards', c.id), {
+          subject: newSubject || c.subject,
+          part: newPart || c.part
+        });
+        updatedCount++;
+      }
+    });
+
+    if (updatedCount > 0) await batch.commit();
+    return updatedCount;
+  }, [uid, userCards]);
+
   const deduplicateSelf = useCallback(async () => {
     if (!uid) return 0;
     const batch = writeBatch(db);
@@ -222,7 +244,7 @@ export function useCards() {
   return {
     allCards, userCards, builtinCards, loading,
     addCard, addCards, deleteCard, updateCard,
-    moveCard: reorderCard, reorderCard, deleteBy, countBy,
+    moveCard: reorderCard, reorderCard, deleteBy, countBy, renameFolder,
     exportJSON, importJSON, deduplicateSelf, duplicateCount,
     subjects, parts,
     isAnonymous, userEmail, loginWithGoogle, handleLogout
