@@ -13,7 +13,8 @@ function classifyCard(card, allCards) {
   return { type: 'new' };
 }
 
-const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
+// 추천하는 최신 API 적용 코드
+const MODELS = ['gemini-3-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash']
 
 // 파일 업로드 최대 크기 (Gemini inline data 한계 ~20MB / base64 약 1.33배 팽창 고려)
 const MAX_FILE_MB = 15
