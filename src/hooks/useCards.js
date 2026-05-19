@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, query } from 'firebase/firestore';
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { db, auth } from '../utils/firebase';
+import { signInAnonymously, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { db, auth, googleProvider } from '../utils/firebase';
 import { builtinCards } from '../data/mnemonics';
 import { isDuplicate } from '../utils/dedup';
 
@@ -9,6 +9,10 @@ export function useCards() {
   const [userCards, setUserCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uid, setUid] = useState(null);
+
+  // 계정 상태 관리
+  const [isAnonymous, setIsAnonymous] = useState(true);
+  const [userEmail, setUserEmail] = useState('');
 
   useEffect(() => {
     let unsubscribeSnapshot = null;
@@ -24,6 +28,10 @@ export function useCards() {
         }
         return;
       }
+
+      // 유저 정보 업데이트
+      setIsAnonymous(user.isAnonymous);
+      setUserEmail(user.email || '');
 
       const currentUid = user.uid;
       setUid(currentUid);
@@ -173,6 +181,24 @@ export function useCards() {
     reader.readAsText(file);
   }), [addCards]);
 
+  // 구글 로그인 함수
+  const loginWithGoogle = useCallback(async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      console.error("구글 로그인 실패:", err);
+    }
+  }, []);
+
+  // 로그아웃 함수
+  const handleLogout = useCallback(async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("로그아웃 실패:", err);
+    }
+  }, []);
+
   const duplicateCount = (() => {
     const withoutBuiltin = userCards.filter((c) => !builtinCards.some((b) => isDuplicate(b, c)));
     const kept = [];
@@ -184,10 +210,11 @@ export function useCards() {
   const parts = (subject) => [...new Set(allCards.filter((c) => c.subject === subject).map((c) => c.part))];
 
   return {
-    allCards, userCards, builtinCards, loading, // loading 반환 필수!
+    allCards, userCards, builtinCards, loading,
     addCard, addCards, deleteCard, updateCard,
     moveCard: reorderCard, reorderCard, deleteBy, countBy,
     exportJSON, importJSON, deduplicateSelf, duplicateCount,
     subjects, parts,
+    isAnonymous, userEmail, loginWithGoogle, handleLogout
   };
 }
