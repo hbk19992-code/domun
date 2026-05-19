@@ -5,10 +5,7 @@ import { db, auth, googleProvider } from '../utils/firebase';
 import { builtinCards } from '../data/mnemonics';
 import { isDuplicate } from '../utils/dedup';
 
-// 고유 토큰 생성 함수
 const genToken = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
-
-// 캐시 키 헬퍼 함수
 const CACHE_KEY = (uid) => `cards_cache_${uid}`;
 const REV_KEY = (uid) => `cache_rev_${uid}`;
 
@@ -19,18 +16,15 @@ export function useCards() {
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [userEmail, setUserEmail] = useState('');
 
-  // 현재 내 변경사항을 추적하여 불필요한 재동기화를 막기 위한 Ref
   const localRevRef = useRef(null);
-  const uidRef = useRef(null); // commitOps에서 클로저 문제 없이 최신 uid 접근
+  const uidRef = useRef(null);
 
-  // 클라우드와 전체 동기화 (최초 1회 또는 다른 기기에서 변경이 감지될 때만 실행)
   const fullSync = useCallback(async (currentUid, serverRev) => {
     try {
       const cardsRef = collection(db, 'users', currentUid, 'cards');
       const snapshot = await getDocs(query(cardsRef));
       let fetched = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
 
-      // [레거시 마이그레이션] 옛날 로컬스토리지 방식 데이터가 남아있다면 클라우드로 이관
       const localRaw = localStorage.getItem('mnemonic_user_cards');
       if (localRaw && fetched.length === 0) {
         const localCards = JSON.parse(localRaw);
@@ -40,14 +34,12 @@ export function useCards() {
             const docId = card.id || doc(collection(db, 'dummy')).id;
             batch.set(doc(db, 'users', currentUid, 'cards', docId), { ...card, id: docId });
           });
-          // 마이그레이션된 것도 캐시에 저장해야 하므로 일단 커밋
           await batch.commit();
           localStorage.removeItem('mnemonic_user_cards');
           fetched = localCards;
         }
       }
 
-      // 상태 및 캐시 업데이트
       setUserCards(fetched);
       localStorage.setItem(CACHE_KEY(currentUid), JSON.stringify(fetched));
       
@@ -55,7 +47,6 @@ export function useCards() {
       localRevRef.current = newRev;
       localStorage.setItem(REV_KEY(currentUid), newRev);
 
-      // 만약 메타 문서가 처음이라면 생성
       if (!serverRev) {
         await setDoc(doc(db, 'users', currentUid, 'meta', 'cards'), { rev: newRev }, { merge: true });
       }
@@ -80,28 +71,26 @@ export function useCards() {
       setUid(currentUid);
       uidRef.current = currentUid;
 
-      // 앱 로드 즉시 기존 캐시를 확인해 UI부터 보여줌 (체감 속도 향상)
       const cachedRev = localStorage.getItem(REV_KEY(currentUid));
       const cachedData = localStorage.getItem(CACHE_KEY(currentUid));
       if (cachedRev && cachedData) {
         try {
           setUserCards(JSON.parse(cachedData));
           localRevRef.current = cachedRev;
-          setLoading(false); // 캐시가 있으면 로딩 해제 후 뒷단에서 확인
+          setLoading(false);
         } catch(e) {}
       }
 
-      // 수백 장의 카드 대신, 'meta/cards' 단 1개의 문서만 모니터링하여 변경을 감지합니다.
       const metaRef = doc(db, 'users', currentUid, 'meta', 'cards');
       unsubscribeMeta = onSnapshot(metaRef, async (metaSnap) => {
         const serverRev = metaSnap.exists() ? metaSnap.data().rev : null;
         
-        // 서버 버전이 로컬과 다르다면 (다른 기기에서 변경했거나 첫 로그인인 경우) 전체 동기화 실행
-        if (serverRev !== localRevRef.current) {
+        // 🚨 [여기가 수정된 핵심 로직입니다!] 
+        // 로컬 캐시가 아예 없거나(!localRevRef.current), 서버 버전과 다르면 무조건 동기화 실행
+        if (!localRevRef.current || serverRev !== localRevRef.current) {
           await fullSync(currentUid, serverRev);
         }
         
-        // 캐시가 없었던 유저를 위해 여기서 로딩 완전 해제
         setLoading(false);
       }, (err) => {
         console.error("메타데이터 리스너 오류:", err);
@@ -115,20 +104,16 @@ export function useCards() {
     };
   }, [fullSync]);
 
-  // Firestore 배치 처리 및 로컬 캐시 동시 업데이트 헬퍼 (초과 시 400개 단위 분할)
   const commitOps = useCallback(async (nextCards, buildBatchFunc) => {
     const currentUid = uidRef.current;
     if (!currentUid) return;
 
-    // 1. 상태 및 로컬 캐시를 즉시 업데이트하여 반응성 확보
     const newRev = genToken();
-    localRevRef.current = newRev; // 내 변경사항임을 표시해 onSnapshot 재호출 방지
+    localRevRef.current = newRev;
     setUserCards(nextCards);
     localStorage.setItem(CACHE_KEY(currentUid), JSON.stringify(nextCards));
     localStorage.setItem(REV_KEY(currentUid), newRev);
 
-    // 2. 콜백으로부터 작업 리스트(operation object)를 받아와 청크 단위(400)로 쪼개어 배치 커밋
-    // Firestore limit는 500이지만 안전하게 400 단위로 자릅니다.
     const ops = buildBatchFunc();
     const CHUNK_SIZE = 400;
     
@@ -141,7 +126,6 @@ export function useCards() {
         else if (op.type === 'delete') batch.delete(op.ref);
       });
 
-      // 마지막 청크에 메타데이터 버전 업데이트를 포함
       if (i + CHUNK_SIZE >= ops.length) {
         const metaRef = doc(db, 'users', currentUid, 'meta', 'cards');
         batch.set(metaRef, { rev: newRev }, { merge: true });
@@ -155,7 +139,7 @@ export function useCards() {
 
   const addCard = useCallback(async (card) => {
     if (!uidRef.current) return;
-    const docRef = doc(collection(db, 'dummy')); // Auto-ID 생성
+    const docRef = doc(collection(db, 'dummy')); 
     const newCard = { ...card, id: docRef.id };
     const nextCards = [...userCards, newCard];
     
