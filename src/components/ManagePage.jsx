@@ -132,21 +132,21 @@ export default function ManagePage({ cards }) {
     }
   }
 
-  const handleRename = () => {
-    if (targetEditCount === 0 || (!editNewSub.trim() && !editNewPart.trim())) return
-    if (window.confirm(`[${editOldSub} > ${editOldPart}] 폴더 범위의 카드 ${targetEditCount}개를 일괄 변경하시겠습니까?`)) {
-      renameFolder({
-        oldSubject: editOldSub,
-        oldPart: editOldPart,
-        newSubject: editNewSub.trim() || editOldSub,
-        newPart: editNewPart.trim() || editOldPart
-      }).then((count) => {
-        alert(`${count}개의 카드가 성공적으로 이동 및 수정되었습니다.`);
-        setEditNewSub('');
-        setEditNewPart('');
-      });
-    }
+ const handleRename = () => {
+  if (targetEditCount === 0 || (!editNewSub.trim() && !editNewPart.trim())) return
+  if (window.confirm(`[${editOldSub} > ${editOldPart}] 폴더 범위의 카드 ${targetEditCount}개를 일괄 변경하시겠습니까?`)) {
+    renameFolder({
+      oldSubject: editOldSub,
+      oldPart: editOldPart,
+      newSubject: editNewSub.trim(),   // 빈 값이면 renameFolder가 기존 과목명 유지
+      newPart: editNewPart.trim()      // 빈 값이면 renameFolder가 기존 단원명 유지
+    }).then((count) => {
+      alert(`${count}개의 카드가 성공적으로 이동 및 수정되었습니다.`);
+      setEditNewSub('');
+      setEditNewPart('');
+    });
   }
+}
 
   const handleAddCardSubmit = async () => {
     if (!newSub.trim() || !newPart.trim() || !newQ.trim()) {
