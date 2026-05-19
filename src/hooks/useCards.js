@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, query } from 'firebase/firestore';
-import { signInAnonymously, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { signInAnonymously, onAuthStateChanged, signInWithPopup, signOut, linkWithPopup } from 'firebase/auth';
 import { db, auth, googleProvider } from '../utils/firebase';
 import { builtinCards } from '../data/mnemonics';
 import { isDuplicate } from '../utils/dedup';
@@ -181,12 +181,22 @@ export function useCards() {
     reader.readAsText(file);
   }), [addCards]);
 
-  // 구글 로그인 함수
+  // 구글 연동/로그인 함수 (linkWithPopup 적용)
   const loginWithGoogle = useCallback(async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const user = auth.currentUser;
+      if (user && user.isAnonymous) {
+        await linkWithPopup(user, googleProvider);
+        console.log("구글 계정 연동 완료 (데이터 유지)");
+      } else {
+        await signInWithPopup(auth, googleProvider);
+      }
     } catch (err) {
-      console.error("구글 로그인 실패:", err);
+      console.error("구글 연동/로그인 실패:", err);
+      if (err.code === 'auth/credential-already-in-use') {
+        alert("이미 사용 중인 구글 계정입니다. 연동 대신 기존 계정으로 로그인합니다.");
+        await signInWithPopup(auth, googleProvider);
+      }
     }
   }, []);
 
