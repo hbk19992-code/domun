@@ -13,8 +13,8 @@ function classifyCard(card, allCards) {
   return { type: 'new' };
 }
 
-// ExtractPage.jsx 상단의 이 줄을 찾아서 원래 상태로 되돌려주세요!
-const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
+// 속도에 '몰빵'한 lite 모델을 1순위로 당겨옵니다.
+const MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash']
 
 // 파일 업로드 최대 크기 (Gemini inline data 한계 ~20MB / base64 약 1.33배 팽창 고려)
 const MAX_FILE_MB = 15
