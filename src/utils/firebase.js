@@ -1,5 +1,9 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -12,6 +16,16 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// 오프라인 영구 캐시(IndexedDB)
+// 재방문/새로고침 시 캐시에서 먼저 읽고, 서버와는 변경분(델타)만 동기화한다.
+// 같은 카드를 반복해서 전부 다시 읽는 과금을 크게 줄인다.
+//   - getFirestore() 대신 initializeFirestore() 를 써야 캐시 설정이 적용됨
+//   - persistentMultipleTabManager: 여러 탭을 동시에 열어도 안전
+//   - Firestore 초기화는 이 파일 한 곳뿐이므로 항상 다른 호출보다 먼저 실행됨
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});
+
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider(); // 구글 로그인 프로바이더 추가
+export const googleProvider = new GoogleAuthProvider();
