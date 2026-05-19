@@ -18,28 +18,61 @@ const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-
 const MAX_FILE_MB = 15
 const TEXT_CHUNK_CHARS = 9000
 const TEXT_CHUNK_OVERLAP = 600
-const GEMINI_TIMEOUT_MS = 120000
-const GEMINI_MAX_OUTPUT_TOKENS = 12000
+const GEMINI_TIMEOUT_MS = 180000
+const GEMINI_MAX_OUTPUT_TOKENS = 50000
+const GEMINI_CHUNK_OUTPUT_TOKENS = 24000
 
 const MNEMONIC_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
 
 【절대 규칙】
 - 문서에 실제로 있는 두문자는 단 하나도 놓치지 말 것.
-- 문서에 없는 내용을 지어내지 말 것.
+- 확신이 조금 부족해도 패턴에 해당하면 일단 추출할 것. 나중에 사용자가 판단한다.
+- 단, 문서에 없는 두문자나 의미를 지어내지 말 것.
+- 요약하지 말고, 카드 수를 줄이지 말고, 반복되는 형식의 항목도 각각 별도 카드로 뽑을 것.
 
-【두문자 인식 기준】
-1. 점(.) 구분형: "이.가.게.귀.위"
+【두문자 인식 기준 — 아래 패턴 중 하나라도 해당하면 추출】
+1. 점(.) 구분형: "이.가.게.귀.위", "보.필.불.대", "동.매.철"
 2. 괄호 설명형: "준.통.수 [준비완료·통지·수령]"
-3. 한글 약어 나열: "모.사.실"
+3. 한글 약어 나열: "모.사.실", "강.손.해.책", "변.대.공"
+4. 꺽쇠 요건/효과: "<요건>이.가.게.귀.위 <효과>강.손.해.책" → 각각 별도 카드로
+5. 비고 설명형: "[의무위반/상당인과관계/손해범위]" 앞에 두문자가 있으면 추출
+6. 조항 번호와 결합: "392조 강.손.해.책", "451조 동.기"
+7. 단어 축약형: "출.구.정", "항.전", "적.기.해"
+8. 영어·숫자 포함: "파.판.5.도", "소.객.도 안.지"
+9. 한자 포함: "생.원.유", "묘.지.명.철.귀.무.기.침"
+10. 특수 표기: "저+건.동.경", "3아.미안.신변"
+
+【추출 방법】
+- 문서를 처음부터 끝까지 한 줄씩 읽으며 위 패턴을 전부 탐색한다.
+- 두문자 발견 시 앞뒤 문맥으로 question(이 두문자가 답이 되는 질문)을 만든다.
+- 같은 주제에 요건/효과/판례/예외가 따로 있으면 카드도 따로 만든다.
+- detail에는 두문자의 각 글자가 무엇의 약자인지 문서 표현을 최대한 보존해 적는다.
+- 같은 단락에 두문자가 여러 개 있으면 각각 별도 카드로 분리한다.
+- 분량이 많아도 생략하지 말고 가능한 모든 카드를 출력한다.
+
+【과목·단원 분류】
+- subject: 법 과목명. 예: 민법, 형법, 헌법, 행정법, 민사소송법, 상법
+- part: 장·절·주제 단위. 예: 채권총론, 물권법, 법률행위, 소송요건
+- 문서 제목·목차·소제목이 있으면 그 구조를 그대로 사용한다.
+- 판단이 어려우면 빈 문자열 대신 "미분류"로 둔다.
 
 【출력 형식 — 순수 JSON 배열만】
-[{"subject":"과목명","part":"단원명","question":"질문","mnemonic":"두문자","detail":"① 의미1 / ② 의미2 ..."}]`
+[{"subject":"과목명","part":"단원명","question":"질문","mnemonic":"두문자","detail":"① 의미1 / ② 의미2 ..."}]
+
+최종 점검: 출력 전 문서를 다시 훑어 누락된 두문자가 없는지 확인하라.`
 
 const QA_PROMPT = `당신은 법학 시험 학습 카드를 만드는 전문가입니다.
 질문-답 형태의 학습 카드를 순수 JSON 배열로만 추출하세요.
 
+【절대 규칙】
+- 시험에 나올 핵심 개념·요건·효과·판례·정의·예외를 빠짐없이 카드화할 것.
+- 요약본 몇 개만 만들지 말고, 한 카드에는 하나의 개념만 담아 많이 만들 것.
+- 문서에 없는 내용을 지어내지 말 것.
+
 【출력 형식 — 순수 JSON 배열만】
-[{"subject":"과목명","part":"파트명","question":"질문","answer":"답"}]`
+[{"subject":"과목명","part":"파트명","question":"질문","answer":"답"}]
+
+최종 점검: 출력 전 문서를 다시 훑어 누락된 핵심 내용이 없는지 확인하라.`
 
 // Gemini 규격 전용 REST API 송신 함수 (1회)
 async function callGemini(apiKey, model, parts, systemPrompt, options = {}) {
@@ -233,11 +266,17 @@ function splitTextIntoChunks(text) {
 
 function makeChunkPrompt(chunk, index, total) {
   if (total <= 1) {
-    return `다음 텍스트에서 카드를 빠짐없이 추출해주세요. 출력은 JSON 배열만 반환하세요.\n\n${chunk}`
+    return `다음 텍스트에서 카드를 최대한 많이, 빠짐없이 추출해주세요.
+요약하지 말고 두문자/핵심 쟁점이 보이면 각각 별도 카드로 만드세요.
+출력은 JSON 배열만 반환하세요.
+
+${chunk}`
   }
   return `다음은 전체 문서 중 ${index + 1}/${total}번째 조각입니다.
-이 조각에 실제로 등장하는 카드만 추출하세요.
-앞뒤 조각과 일부 문맥이 겹칠 수 있으니 중복 생성을 줄이고, 출력은 JSON 배열만 반환하세요.
+이 조각에 있는 두문자/핵심 쟁점을 최대한 많이 추출하세요.
+요약하지 말고, 작은 항목도 카드로 분리하세요.
+앞뒤 조각과 일부 문맥이 겹칠 수 있으니 완전 동일한 중복만 줄이되, 누락 방지를 더 우선하세요.
+출력은 JSON 배열만 반환하세요.
 
 ${chunk}`
 }
@@ -295,7 +334,7 @@ async function extractTextWithChunks(apiKey, text, systemPrompt, label, setProgr
         [{ text: makeChunkPrompt(chunks[i], i, chunks.length) }],
         systemPrompt,
         (msg) => setProgress(`${prefix} · ${msg.replace(/^☁️\s*/, '')}`),
-        { maxOutputTokens: chunks.length > 1 ? 9000 : GEMINI_MAX_OUTPUT_TOKENS }
+        { maxOutputTokens: chunks.length > 1 ? GEMINI_CHUNK_OUTPUT_TOKENS : GEMINI_MAX_OUTPUT_TOKENS }
       )
       const { data, truncated } = repairJSON(raw)
       if (Array.isArray(data)) collected.push(...data)
@@ -619,7 +658,7 @@ export default function ExtractPage({ cards, onImport }) {
       const base64 = await readBase64(f)
       const geminiPayload = [
         { inline_data: { mime_type: 'application/pdf', data: base64 } },
-        { text: '이 문서의 모든 내용을 분석해 카드를 빠짐없이 추출해주세요. 출력은 JSON 배열만 반환하세요.' },
+        { text: '이 문서의 모든 내용을 처음부터 끝까지 훑어 카드를 최대한 많이, 빠짐없이 추출해주세요. 요약하지 말고 두문자/핵심 쟁점이 보이면 각각 별도 카드로 만드세요. 출력은 JSON 배열만 반환하세요.' },
       ]
       await runExtraction(geminiPayload, f.name)
     }
