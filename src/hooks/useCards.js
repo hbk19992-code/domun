@@ -4,6 +4,7 @@ import { signInAnonymously, onAuthStateChanged, signInWithPopup, signOut, linkWi
 import { db, auth, googleProvider } from '../utils/firebase';
 import { builtinCards } from '../data/mnemonics';
 import { isDuplicate } from '../utils/dedup';
+import { exportX4Epub, exportX4Txt } from '../utils/x4Export';
 
 const genToken = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 const CACHE_KEY = (uid) => `cards_cache_${uid}`;
@@ -323,6 +324,22 @@ export function useCards() {
     a.download = `mnemonic_cards_${new Date().toISOString().slice(0,10)}.json`; a.click();
   }, [allCards]);
 
+  const exportX4TXT = useCallback(() => {
+    if (allCards.length === 0) {
+      alert('내보낼 카드가 없습니다.');
+      return;
+    }
+    exportX4Txt(allCards);
+  }, [allCards]);
+
+  const exportX4EPUB = useCallback(() => {
+    if (allCards.length === 0) {
+      alert('내보낼 카드가 없습니다.');
+      return;
+    }
+    exportX4Epub(allCards);
+  }, [allCards]);
+
   const importJSON = useCallback((file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -372,7 +389,7 @@ export function useCards() {
     syncing, syncError,
     addCard, addCards, deleteCard, updateCard,
     moveCard: () => {}, reorderCard: () => {}, deleteBy, countBy, renameFolder,
-    exportJSON, importJSON, deduplicateSelf, duplicateCount,
+    exportJSON, exportX4TXT, exportX4EPUB, importJSON, deduplicateSelf, duplicateCount,
     subjects, parts,
     isAnonymous, userEmail, loginWithGoogle, handleLogout
   };

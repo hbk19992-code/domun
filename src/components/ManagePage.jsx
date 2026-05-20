@@ -47,8 +47,8 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
 
 export default function ManagePage({ cards }) {
   const {
-    userCards, duplicateCount, isAnonymous, userEmail, loginWithGoogle, handleLogout,
-    exportJSON, importJSON, deduplicateSelf, deleteBy, countBy, renameFolder, subjects, parts
+    allCards, userCards, duplicateCount, isAnonymous, userEmail, loginWithGoogle, handleLogout,
+    exportJSON, exportX4TXT, exportX4EPUB, importJSON, deduplicateSelf, deleteBy, countBy, renameFolder, subjects, parts
   } = cards
 
   // ── [상태] 선별 삭제 및 폴더 관리 관련 ──
@@ -353,7 +353,16 @@ export default function ManagePage({ cards }) {
         </div>
       </div>
 
-      {/* 데이터 백업 / 복원 섹션 */}
+      {/* X4 리더용 파일 생성 섹션 */}
+      <div style={S.section}>
+        <div style={S.title}>Xteink X4용 내보내기</div>
+        <div style={S.sub}>X4 기본 리더에서 바로 읽기 좋은 UTF-8 TXT와 작은 화면용 EPUB 파일을 만듭니다. 총 {allCards.length}개 카드가 포함됩니다.</div>
+        <div style={S.grid}>
+          <button style={S.btn(false)} onClick={exportX4TXT}>TXT 만들기</button>
+          <button style={S.btn(false)} onClick={exportX4EPUB}>EPUB 만들기</button>
+        </div>
+      </div>
+
       <div style={S.section}>
         <div style={S.title}>데이터 백업 및 백업 파일 로드</div>
         <div style={S.sub}>내장 기본 카드와 직접 만든 유저 카드를 모두 백업하거나 가져옵니다.</div>
