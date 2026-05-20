@@ -46,6 +46,16 @@ const S = {
     background: primary ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b',
     color: primary ? '#fff' : '#94a3b8', border: 'none',
   }),
+  syncBanner: (error) => ({
+    background: error ? 'rgba(245,158,11,0.1)' : 'rgba(99,102,241,0.08)',
+    border: `1px solid ${error ? 'rgba(245,158,11,0.35)' : 'rgba(99,102,241,0.22)'}`,
+    color: error ? '#fbbf24' : '#94a3b8',
+    borderRadius: 12,
+    padding: '9px 12px',
+    fontSize: 12,
+    marginBottom: 14,
+    lineHeight: 1.5,
+  }),
 }
 
 function ShareImportModal({ sharedCards, onImport, onClose }) {
@@ -102,8 +112,8 @@ export default function App() {
       })
   }, [])
 
-  const handleShareImport = () => {
-    const added = cards.addCards(sharedCards)
+  const handleShareImport = async () => {
+    const added = await cards.addCards(sharedCards)
     const skipped = sharedCards.length - added
     setSharedCards(null)
     clearShareParam()
@@ -125,18 +135,14 @@ export default function App() {
         </nav>
       </header>
       <main style={S.content}>
-        {cards.loading ? (
-          <div style={{ textAlign: 'center', padding: '100px 0', color: '#64748b' }}>
-            <div style={{ fontSize: 40, marginBottom: 16 }}>☁️</div>
-            <div>데이터를 동기화하는 중입니다...</div>
+        {(cards.loading || cards.syncing || cards.syncError) && (
+          <div style={S.syncBanner(cards.syncError)}>
+            {cards.syncError || (cards.loading ? '앱을 여는 중입니다. 오래 걸리면 로컬 카드로 먼저 시작합니다.' : '클라우드 동기화 중입니다. 학습은 바로 진행할 수 있습니다.')}
           </div>
-        ) : (
-          <>
-            {tab === 'study'   && <StudyPage   cards={cards} />}
-            {tab === 'extract' && <ExtractPage cards={cards} onImport={() => setTab('study')} />}
-            {tab === 'manage'  && <ManagePage  cards={cards} />}
-          </>
         )}
+        {tab === 'study'   && <StudyPage   cards={cards} />}
+        {tab === 'extract' && <ExtractPage cards={cards} onImport={() => setTab('study')} />}
+        {tab === 'manage'  && <ManagePage  cards={cards} />}
       </main>
 
       {sharedCards && (

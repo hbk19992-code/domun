@@ -206,17 +206,6 @@ export default function StudyPage({ cards }) {
   const togglePlay = () => { if (playing) { setPlaying(false); stop() } else setPlaying(true) }
   const exitListen = () => { setPlaying(false); stop(); setListenMode(false) }
 
-  // ✨ 클라우드 데이터가 아직 로딩 중일 때 처리
-  if (srsLoading) {
-    return (
-      <div style={S.empty}>
-        <div style={{ fontSize: 44, marginBottom: 14 }}>☁️</div>
-        <div style={{ fontSize: 17, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>동기화 중...</div>
-        <div style={{ color: '#334155', fontSize: 14 }}>클라우드에서 학습 진행률을 불러오고 있습니다</div>
-      </div>
-    )
-  }
-
   if (allCards.length === 0) {
     return (
       <div style={S.empty}>
@@ -229,6 +218,12 @@ export default function StudyPage({ cards }) {
 
   return (
     <div>
+      {srsLoading && (
+        <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.22)', color: '#94a3b8', borderRadius: 12, padding: '9px 12px', fontSize: 12, marginBottom: 14 }}>
+          학습 진행률을 동기화 중입니다. 카드는 바로 넘길 수 있습니다.
+        </div>
+      )}
+
       {mode === 'all' && dueCards.length > 0 && (
         <div style={S.reviewBanner}>
           <div>

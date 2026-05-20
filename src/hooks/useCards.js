@@ -8,18 +8,44 @@ import { isDuplicate } from '../utils/dedup';
 const genToken = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 const CACHE_KEY = (uid) => `cards_cache_${uid}`;
 const REV_KEY = (uid) => `cache_rev_${uid}`;
+const LAST_CACHE_KEY = 'cards_cache_last';
+
+function readCardsFromStorage(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCardsCache(key, cards) {
+  localStorage.setItem(key, JSON.stringify(cards));
+  localStorage.setItem(LAST_CACHE_KEY, JSON.stringify(cards));
+}
 
 export function useCards() {
-  const [userCards, setUserCards] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [userCards, setUserCards] = useState(() => {
+    const last = readCardsFromStorage(LAST_CACHE_KEY);
+    return last.length > 0 ? last : readCardsFromStorage('mnemonic_user_cards');
+  });
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState('');
   const [uid, setUid] = useState(null);
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [userEmail, setUserEmail] = useState('');
 
   const localRevRef = useRef(null);
   const uidRef = useRef(null);
+  const syncInFlightRef = useRef(false);
 
   const fullSync = useCallback(async (currentUid, serverRev) => {
+    if (syncInFlightRef.current) return;
+    syncInFlightRef.current = true;
+    setSyncing(true);
+    setSyncError('');
     try {
       const cardsRef = collection(db, 'users', currentUid, 'cards');
       const snapshot = await getDocs(query(cardsRef));
@@ -41,7 +67,7 @@ export function useCards() {
       }
 
       setUserCards(fetched);
-      localStorage.setItem(CACHE_KEY(currentUid), JSON.stringify(fetched));
+      writeCardsCache(CACHE_KEY(currentUid), fetched);
       
       const newRev = serverRev || genToken();
       localRevRef.current = newRev;
@@ -52,6 +78,11 @@ export function useCards() {
       }
     } catch (e) {
       console.error("전체 동기화 실패:", e);
+      setSyncError('클라우드 동기화가 지연되고 있습니다. 로컬 데이터로 먼저 사용할 수 있습니다.');
+    } finally {
+      syncInFlightRef.current = false;
+      setSyncing(false);
+      setLoading(false);
     }
   }, []);
 
@@ -61,7 +92,11 @@ export function useCards() {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         try { await signInAnonymously(auth); } 
-        catch (err) { console.error("익명 로그인 실패:", err); setLoading(false); }
+        catch (err) {
+          console.error("익명 로그인 실패:", err);
+          setSyncError('클라우드 로그인이 지연되고 있습니다. 로컬 데이터로 먼저 사용할 수 있습니다.');
+          setLoading(false);
+        }
         return;
       }
 
@@ -73,27 +108,34 @@ export function useCards() {
 
       const cachedRev = localStorage.getItem(REV_KEY(currentUid));
       const cachedData = localStorage.getItem(CACHE_KEY(currentUid));
-      if (cachedRev && cachedData) {
+      const hasUserCache = !!(cachedRev && cachedData);
+      if (hasUserCache) {
         try {
-          setUserCards(JSON.parse(cachedData));
+          const cachedCards = JSON.parse(cachedData);
+          if (Array.isArray(cachedCards)) setUserCards(cachedCards);
           localRevRef.current = cachedRev;
           setLoading(false);
         } catch(e) {}
+      } else {
+        setLoading(false);
+        fullSync(currentUid, null);
       }
 
       const metaRef = doc(db, 'users', currentUid, 'meta', 'cards');
-      unsubscribeMeta = onSnapshot(metaRef, async (metaSnap) => {
+      unsubscribeMeta = onSnapshot(metaRef, (metaSnap) => {
         const serverRev = metaSnap.exists() ? metaSnap.data().rev : null;
         
-        // 🚨 [여기가 수정된 핵심 로직입니다!] 
-        // 로컬 캐시가 아예 없거나(!localRevRef.current), 서버 버전과 다르면 무조건 동기화 실행
         if (!localRevRef.current || serverRev !== localRevRef.current) {
-          await fullSync(currentUid, serverRev);
+          fullSync(currentUid, serverRev);
+        } else {
+          setSyncing(false);
         }
         
         setLoading(false);
       }, (err) => {
         console.error("메타데이터 리스너 오류:", err);
+        setSyncError('클라우드 동기화가 지연되고 있습니다. 로컬 데이터로 먼저 사용할 수 있습니다.');
+        setSyncing(false);
         setLoading(false);
       });
     });
@@ -106,12 +148,16 @@ export function useCards() {
 
   const commitOps = useCallback(async (nextCards, buildBatchFunc) => {
     const currentUid = uidRef.current;
-    if (!currentUid) return;
+    if (!currentUid) {
+      setUserCards(nextCards);
+      writeCardsCache('mnemonic_user_cards', nextCards);
+      return;
+    }
 
     const newRev = genToken();
     localRevRef.current = newRev;
     setUserCards(nextCards);
-    localStorage.setItem(CACHE_KEY(currentUid), JSON.stringify(nextCards));
+    writeCardsCache(CACHE_KEY(currentUid), nextCards);
     localStorage.setItem(REV_KEY(currentUid), newRev);
 
     const ops = buildBatchFunc();
@@ -323,6 +369,7 @@ export function useCards() {
 
   return {
     allCards, userCards, builtinCards, loading,
+    syncing, syncError,
     addCard, addCards, deleteCard, updateCard,
     moveCard: () => {}, reorderCard: () => {}, deleteBy, countBy, renameFolder,
     exportJSON, importJSON, deduplicateSelf, duplicateCount,

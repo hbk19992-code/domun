@@ -2,14 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../utils/firebase';
-import { reviewEntry } from '../utils/srs';
+import { loadSRS, reviewEntry } from '../utils/srs';
+
+const SRS_LOAD_TIMEOUT_MS = 1500;
 
 export function useCloudSRS() {
-  const [srs, setSrs] = useState({});
-  const [srsLoading, setSrsLoading] = useState(true);
+  const [srs, setSrs] = useState(() => loadSRS());
+  const [srsLoading, setSrsLoading] = useState(false);
 
   useEffect(() => {
     let unsubscribeSnapshot = null;
+    setSrsLoading(true);
+    const openStudyTimer = setTimeout(() => {
+      setSrsLoading(false);
+    }, SRS_LOAD_TIMEOUT_MS);
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       // 새로운 인증 흐름이 트리거되면 기존 내부 스냅샷 연결 해제
@@ -45,6 +51,7 @@ export function useCloudSRS() {
     });
 
     return () => {
+      clearTimeout(openStudyTimer);
       if (unsubscribeAuth) unsubscribeAuth();
       if (unsubscribeSnapshot) unsubscribeSnapshot();
     };
