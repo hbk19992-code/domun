@@ -30,12 +30,38 @@ npm run dev
 npm run build
 ```
 
+## Xteink X4 판례공보 OPDS 설정
+
+Vercel 배포 후 X4에서 다음 경로를 OPDS 서버로 추가합니다.
+
+```text
+https://YOUR-SITE.vercel.app/opds
+```
+
+X4 경로: Settings → System → OPDS Servers → Add Server
+
+### OPDS 환경 변수
+
+- `SITE_URL`: 배포된 사이트 URL. 예: `https://YOUR-SITE.vercel.app`
+- `AUTHOR_NAME`: 기본 저자명. 예: `법원도서관`
+- `CATALOG_TITLE`: OPDS 카탈로그 이름. 예: `대법원 판례공보`
+- `OPDS_USERNAME`, `OPDS_PASSWORD`: 설정하면 HTTP Basic 인증을 사용합니다. 둘 다 비워두면 인증 없이 열립니다.
+
+OPDS 서버는 대법원 판례속보 게시판에서 `판례공보 요약본` 항목을 찾아 PDF 다운로드 항목으로 노출합니다. X4는 웹페이지를 직접 열지 않고 `/opds` 카탈로그에서 PDF를 받아 책장에 저장합니다.
+
+### OPDS 엔드포인트
+
+- `GET /opds`: navigation feed
+- `GET /opds/recent`: acquisition feed
+- `GET /books/{id}.pdf`: 대법원 판례공보 요약본 PDF 프록시 다운로드
+
 ## 기술 스택
 
 - React 18
 - Vite
 - Google Gemini API (gemini-2.5-flash)
 - localStorage (카드 데이터 저장)
+- Vercel Functions (대법원 판례공보 OPDS/PDF 프록시)
 
 ## 저작권 안내
 

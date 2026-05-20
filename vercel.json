@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/opds", "destination": "/api/opds" },
+    { "source": "/opds/recent", "destination": "/api/opds/recent" },
+    { "source": "/books/:id", "destination": "/api/books/:id" }
+  ]
+}
