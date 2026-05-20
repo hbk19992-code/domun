@@ -24,59 +24,116 @@ const GEMINI_TIMEOUT_MS = 180000
 const GEMINI_MAX_OUTPUT_TOKENS = 50000
 const GEMINI_CHUNK_OUTPUT_TOKENS = 24000
 
-const DENSE_PROMPT_SUFFIX = `\n\n【더 촘촘히 재추출 모드】\n- 이미 뽑힌 카드와 겹치더라도 누락 가능성이 있으면 다시 추출한다.\n- 큰 단락 하나를 카드 하나로 요약하지 말고, 요건·효과·예외·판례·정의·비교 포인트를 가능한 한 작은 단위로 쪼갠다.\n- 두문자 주변의 괄호, 표, 번호, 조문, 판례명, 예외 문구를 놓치지 않는다.\n- 불완전해 보이는 항목도 사용자가 검수할 수 있도록 카드 후보로 남긴다.`
+const DENSE_PROMPT_SUFFIX = `\n\n【더 촘촘히 재추출 모드】\n- 이미 뽑힌 카드와 겹치더라도 누락 가능성이 있으면 다시 추출한다.\n- 큰 단락 하나를 카드 하나로 요약하지 말고, 요건·효과·예외·판례·정의·비교 포인트를 가능한 한 작은 단위로 쪼갠다.\n- 두문자 주변의 괄호, 표, 번호, 조문, 판례명, 예외 문구를 놓치지 않는다.\n- 그러나 거부 규칙은 그대로 유지: mnemonic과 detail이 모두 명확히 작성되지 않는 카드는 절대 출력하지 마라.\n- 풀이를 정확히 모르는 글자가 하나라도 있으면 그 카드는 통째로 버려라. 빈 detail은 0개여야 한다.`
 
-const MNEMONIC_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
+const MNEMONIC_PROMPT = `당신은 한국 법학 시험용 두문자(약어) 카드 추출 전문가입니다.
+사법시험·변호사시험·로스쿨 시험에 나오는 두문자를 빠짐없이 뽑되, 풀이가 명확한 것만 카드로 만듭니다.
 
-【절대 규칙】
-- 문서에 실제로 있는 두문자는 단 하나도 놓치지 말 것.
-- 확신이 조금 부족해도 패턴에 해당하면 일단 추출할 것. 나중에 사용자가 판단한다.
-- 단, 문서에 없는 두문자나 의미를 지어내지 말 것.
-- 요약하지 말고, 카드 수를 줄이지 말고, 반복되는 형식의 항목도 각각 별도 카드로 뽑을 것.
+【카드 거부 규칙 — 가장 중요. 절대 준수】
+1. mnemonic 필드와 detail 필드 중 하나라도 비어 있거나 부실하면 그 카드는 출력 금지.
+2. detail은 반드시 "① 풀이1 / ② 풀이2 / ③ 풀이3 ..." 형식. mnemonic 글자 수와 detail 항목 수가 일치해야 함.
+3. 두문자의 글자 중 풀이를 문서에서 확신할 수 없는 것이 하나라도 있으면 카드 통째로 버려라.
+4. "..." "기타" "등" "(불명)" "(생략)" 같은 회피 표현 금지.
+5. detail 길이가 4글자 미만이거나, 그저 단어 1개만 들어있으면 그 카드는 부실. 버려라.
 
-【두문자 인식 기준 — 아래 패턴 중 하나라도 해당하면 추출】
-1. 점(.) 구분형: "이.가.게.귀.위", "보.필.불.대", "동.매.철"
-2. 괄호 설명형: "준.통.수 [준비완료·통지·수령]"
-3. 한글 약어 나열: "모.사.실", "강.손.해.책", "변.대.공"
-4. 꺽쇠 요건/효과: "<요건>이.가.게.귀.위 <효과>강.손.해.책" → 각각 별도 카드로
-5. 비고 설명형: "[의무위반/상당인과관계/손해범위]" 앞에 두문자가 있으면 추출
-6. 조항 번호와 결합: "392조 강.손.해.책", "451조 동.기"
-7. 단어 축약형: "출.구.정", "항.전", "적.기.해"
-8. 영어·숫자 포함: "파.판.5.도", "소.객.도 안.지"
-9. 한자 포함: "생.원.유", "묘.지.명.철.귀.무.기.침"
-10. 특수 표기: "저+건.동.경", "3아.미안.신변"
+이 규칙을 어긴 카드는 시스템이 자동 제거합니다. 따라서 처음부터 풀이가 가능한 두문자만 출력하세요.
 
-【추출 방법】
-- 문서를 처음부터 끝까지 한 줄씩 읽으며 위 패턴을 전부 탐색한다.
-- 두문자 발견 시 앞뒤 문맥으로 question(이 두문자가 답이 되는 질문)을 만든다.
-- 같은 주제에 요건/효과/판례/예외가 따로 있으면 카드도 따로 만든다.
-- detail에는 두문자의 각 글자가 무엇의 약자인지 문서 표현을 최대한 보존해 적는다.
-- 같은 단락에 두문자가 여러 개 있으면 각각 별도 카드로 분리한다.
-- 분량이 많아도 생략하지 말고 가능한 모든 카드를 출력한다.
+【원칙】
+- 문서에 실제로 있는 두문자만 추출. 지어내지 말 것.
+- 요약 금지. 같은 주제라도 요건/효과/판례/예외는 각각 별도 카드.
+- 원문 보존: detail은 문서 표현을 최대한 그대로 옮길 것.
 
-【과목·단원 분류】
-- subject: 법 과목명. 예: 민법, 형법, 헌법, 행정법, 민사소송법, 상법
-- part: 장·절·주제 단위. 예: 채권총론, 물권법, 법률행위, 소송요건
-- 문서 제목·목차·소제목이 있으면 그 구조를 그대로 사용한다.
-- 판단이 어려우면 빈 문자열 대신 "미분류"로 둔다.
+【두문자 인식 패턴 — 하나라도 해당하면 후보로 검토】
+1. 점 구분형: "이.가.게.귀.위", "동.매.철", "강.손.해.책"
+2. 괄호/대괄호 설명형: "준.통.수 [준비완료·통지·수령]", "[의무위반/상당인과관계/손해범위]"
+3. 꺽쇠 분리형: "<요건>이.가.게.귀.위 <효과>강.손.해.책" → 반드시 카드 2장
+4. 조항 결합: "392조 강.손.해.책", "451조 동.기"
+5. 한글 약어 나열: "모.사.실", "변.대.공"
+6. 단어 축약: "출.구.정", "항.전", "적.기.해"
+7. 영문/숫자 혼합: "파.판.5.도", "소.객.도 안.지"
+8. 한자 포함: "생.원.유", "묘.지.명.철"
+9. 특수 표기: "저+건.동.경", "3아.미안.신변"
 
-【출력 형식 — 순수 JSON 배열만】
-[{"subject":"과목명","part":"단원명","question":"질문","mnemonic":"두문자","detail":"① 의미1 / ② 의미2 ..."}]
+【출력 필드 작성 규칙】
 
-최종 점검: 출력 전 문서를 다시 훑어 누락된 두문자가 없는지 확인하라.`
+▶ question — 이 두문자가 정답이 될 수 있는 시험 문제 형식
+   ✓ "이행지체의 성립요건 5가지는?"
+   ✓ "민법 392조에 따른 이행지체의 효과는?"
+   ✗ "이행지체" (단어만 — 금지)
 
-const QA_PROMPT = `당신은 법학 시험 학습 카드를 만드는 전문가입니다.
-질문-답 형태의 학습 카드를 순수 JSON 배열로만 추출하세요.
+▶ mnemonic — 두문자 표기 그대로 (점·꺽쇠·기호 보존)
+   ✓ "이.가.게.귀.위"
+   ✗ "이가게귀위" (구분자 제거 금지)
 
-【절대 규칙】
-- 시험에 나올 핵심 개념·요건·효과·판례·정의·예외를 빠짐없이 카드화할 것.
-- 요약본 몇 개만 만들지 말고, 한 카드에는 하나의 개념만 담아 많이 만들 것.
-- 문서에 없는 내용을 지어내지 말 것.
+▶ detail — 각 글자의 의미를 번호 매겨 풀어쓰기 (필수)
+   - 형식: "① 풀이1 / ② 풀이2 / ③ 풀이3 ..."
+   - mnemonic 글자 수 = detail 항목 수
+   - 단순 키워드("이행기")가 아니라 정식 표현("이행기가 도래할 것")으로
+   - 한 글자라도 모르겠으면 카드 통째 폐기
 
-【출력 형식 — 순수 JSON 배열만】
-[{"subject":"과목명","part":"파트명","question":"질문","answer":"답"}]
+【모범 예시】
 
-최종 점검: 출력 전 문서를 다시 훑어 누락된 핵심 내용이 없는지 확인하라.`
+예시1) 문서: "이행지체 요건 — 이.가.게.귀.위 [이행기 도래·이행 가능·이행 게을리·귀책사유·위법성]"
+출력:
+{"subject":"민법","part":"채권총론","question":"이행지체의 성립요건 5가지는?","mnemonic":"이.가.게.귀.위","detail":"① 이행기가 도래할 것 / ② 이행이 가능할 것 / ③ 채무자가 이행을 게을리할 것 / ④ 채무자의 귀책사유 / ⑤ 이행하지 않는 것이 위법할 것"}
+
+예시2) 문서: "<요건>이.가.게.귀.위 <효과>강.손.해.책 (392조)"
+→ 반드시 카드 2장:
+{"subject":"민법","part":"채권총론","question":"이행지체의 성립요건은?","mnemonic":"이.가.게.귀.위","detail":"① 이행기 도래 / ② 이행 가능 / ③ 이행 게을리 / ④ 귀책사유 / ⑤ 위법성"}
+{"subject":"민법","part":"채권총론","question":"이행지체의 효과는? (민법 392조)","mnemonic":"강.손.해.책","detail":"① 강제이행 / ② 손해배상 / ③ 계약해제 / ④ 책임가중"}
+
+예시3) 문서: "준.통.수 [채권자가 수령준비 완료 · 채무자에게 통지 · 수령]"
+출력:
+{"subject":"민법","part":"채권총론","question":"채권자지체의 요건 3가지는?","mnemonic":"준.통.수","detail":"① 채권자의 수령준비 완료 / ② 채무자에 대한 통지 / ③ 수령(또는 수령에 협력)"}
+
+【금지 예시 — 절대 출력하지 말 것】
+✗ {"mnemonic":"이.가.게.귀.위","detail":""}  ← detail 비어 있음
+✗ {"mnemonic":"이.가.게.귀.위","detail":"이행지체 요건"}  ← 항목 없이 단순 키워드
+✗ {"mnemonic":"이.가.게.귀.위","detail":"① 이행기 / ② 가능 / ③ ... / ④ ... / ⑤ ..."}  ← 회피 표현
+✗ {"mnemonic":"","detail":"① 이행기 도래 ..."}  ← mnemonic 비어 있음
+
+【과목·단원】
+- subject: 민법 / 형법 / 헌법 / 행정법 / 민사소송법 / 형사소송법 / 상법 등
+- part: 문서의 장·절·단원 표기를 그대로 (예: 채권총론, 물권법, 법률행위)
+- 불명확하면 빈 문자열 대신 "미분류"
+
+【출력 형식】
+순수 JSON 배열만. 코드블록·서문·말꼬리 일절 금지.
+[{"subject":"","part":"","question":"","mnemonic":"","detail":""}, ...]
+
+【최종 점검】
+출력 직전에 거부 규칙 5개를 다시 확인하라.
+mnemonic이 비었거나 / detail이 비었거나 / detail이 단순 키워드면 그 카드를 지워라.`
+
+const QA_PROMPT = `당신은 한국 법학 시험 학습 카드 제작 전문가입니다.
+시험에 나올 핵심 개념·요건·효과·판례·정의·예외를 Q&A 카드로 빠짐없이 추출하세요.
+
+【카드 거부 규칙 — 절대 준수】
+- question과 answer 중 하나라도 비어 있거나 부실하면 카드 출력 금지.
+- answer가 단순 키워드 1개만 있는 경우 부실. 버려라.
+- "..." "기타" "등" 같은 회피 표현 금지.
+
+【원칙】
+- 한 카드에 한 개념만. 묶어서 요약 금지.
+- 문서에 없는 내용 지어내지 말 것.
+- 카드가 많아도 좋음. 누락이 가장 큰 죄.
+
+【작성 규칙】
+▶ question — 시험 문제처럼 구체적으로
+   ✓ "민법 제390조 채무불이행에 따른 손해배상의 요건은?"
+   ✗ "채무불이행이란?"
+▶ answer — 문서 표현 살려 정확히. 번호·구조 보존
+   "① ... / ② ... / ③ ..." 또는 "요건: ... / 효과: ..."
+
+【예시】
+문서: "선의취득(민법 249조) — 동산을 평온·공연하게 양수한 자가 선의·무과실이면 즉시 소유권 취득"
+출력:
+{"subject":"민법","part":"물권법","question":"동산 선의취득(민법 249조)의 요건은?","answer":"① 동산일 것 / ② 평온·공연하게 양수 / ③ 양수인이 선의·무과실 / 효과: 즉시 소유권 취득"}
+
+【출력】순수 JSON 배열만.
+[{"subject":"","part":"","question":"","answer":""}]
+
+【최종 점검】출력 전 문서를 다시 훑고, 거부 규칙 어긴 카드 있으면 지우고 출력하라.`
 
 // Gemini 규격 전용 REST API 송신 함수 (1회)
 async function callGemini(apiKey, model, parts, systemPrompt, options = {}) {
@@ -274,10 +331,11 @@ function makeChunkPrompt(chunk, index, total, options = {}) {
   const denseGuide = options.dense
     ? `\n더 촘촘히 재추출 모드입니다. 이미 추출된 카드 수가 적다고 가정하고, 표·괄호·번호·판례·예외 문구까지 더 작은 단위로 쪼개세요.\n`
     : ''
+  const rejectReminder = `\n핵심: mnemonic과 detail 둘 다 반드시 채울 것. detail은 "① ... / ② ..." 형식으로 글자 수만큼. 한쪽이라도 빈 카드는 출력 금지.\n`
   if (total <= 1) {
     return `다음 텍스트에서 카드를 최대한 많이, 빠짐없이 추출해주세요.
 요약하지 말고 두문자/핵심 쟁점이 보이면 각각 별도 카드로 만드세요.
-${denseGuide}
+${rejectReminder}${denseGuide}
 출력은 JSON 배열만 반환하세요.
 
 ${chunk}`
@@ -286,7 +344,7 @@ ${chunk}`
 이 조각에 있는 두문자/핵심 쟁점을 최대한 많이 추출하세요.
 요약하지 말고, 작은 항목도 카드로 분리하세요.
 앞뒤 조각과 일부 문맥이 겹칠 수 있으니 완전 동일한 중복만 줄이되, 누락 방지를 더 우선하세요.
-${denseGuide}
+${rejectReminder}${denseGuide}
 출력은 JSON 배열만 반환하세요.
 
 ${chunk}`
@@ -327,6 +385,40 @@ function mergeExtractedCards(cards) {
     })
   })
   return Array.from(map.values())
+}
+
+// 두문자/설명 필수 검증 — AI가 거부 규칙을 어기고 보낸 부실 카드를 코드단에서 자동 제거
+function isValidExtractedCard(card, extractType) {
+  if (!card || typeof card !== 'object') return false
+
+  const question = String(card.question || '').trim()
+  if (!question) return false
+
+  if (extractType === 'qa') {
+    const answer = String(card.answer || '').trim()
+    // 답이 비었거나, 2글자 미만이면 부실
+    if (answer.length < 2) return false
+    // 회피 표현만 들어있으면 거부
+    if (/^[…·.\-\s]+$/.test(answer)) return false
+    return true
+  }
+
+  // 두문자 모드: mnemonic과 detail 둘 다 필수
+  const mnem = String(card.mnemonic || '').trim()
+  const detail = String(card.detail || '').trim()
+
+  if (!mnem) return false
+  if (!detail) return false
+
+  // detail이 단순 기호/공백만 있는 경우 거부
+  if (/^[…·.\-\s]+$/.test(detail)) return false
+  // detail이 너무 짧으면 단순 키워드일 가능성 → 거부
+  if (detail.length < 4) return false
+  // detail이 회피 표현으로만 끝나면 거부
+  if (/(\.\.\.\s*\/?\s*){2,}/.test(detail)) return false
+  if (/^(기타|등|불명|생략)$/.test(detail)) return false
+
+  return true
 }
 
 async function extractTextWithChunks(apiKey, text, systemPrompt, label, setProgress, options = {}) {
@@ -425,9 +517,10 @@ function buildPrompt(extractType, dense = false) {
 }
 
 function buildPdfInstruction(dense = false) {
+  const reject = '단, mnemonic과 detail 둘 다 반드시 채울 것. 풀이가 명확하지 않은 두문자는 카드 자체를 출력하지 마세요.'
   return dense
-    ? '더 촘촘히 재추출합니다. 이 PDF를 처음부터 끝까지 다시 훑고, 요건·효과·예외·판례·조문·표·괄호 설명·두문자를 작은 단위로 최대한 많이 카드화하세요. 이미 나온 카드와 겹쳐도 누락 방지가 우선입니다. 출력은 JSON 배열만 반환하세요.'
-    : '이 문서의 모든 내용을 처음부터 끝까지 훑어 카드를 최대한 많이, 빠짐없이 추출해주세요. 요약하지 말고 두문자/핵심 쟁점이 보이면 각각 별도 카드로 만드세요. 출력은 JSON 배열만 반환하세요.'
+    ? `더 촘촘히 재추출합니다. 이 PDF를 처음부터 끝까지 다시 훑고, 요건·효과·예외·판례·조문·표·괄호 설명·두문자를 작은 단위로 최대한 많이 카드화하세요. 이미 나온 카드와 겹쳐도 누락 방지가 우선입니다. ${reject} 출력은 JSON 배열만 반환하세요.`
+    : `이 문서의 모든 내용을 처음부터 끝까지 훑어 카드를 최대한 많이, 빠짐없이 추출해주세요. 요약하지 말고 두문자/핵심 쟁점이 보이면 각각 별도 카드로 만드세요. ${reject} 출력은 JSON 배열만 반환하세요.`
 }
 
 function DataListInput({ id, value, onChange, placeholder, style, options }) {
@@ -599,6 +692,7 @@ export default function ExtractPage({ cards, onImport }) {
   const [importMsg, setImportMsg] = useState('')
   const [loadingPct, setLoadingPct] = useState(0)
   const [truncated, setTruncated] = useState(false)
+  const [droppedCount, setDroppedCount] = useState(0)
   const [lastSource, setLastSource] = useState(null)
   const inputRef = useRef(null)
 
@@ -658,33 +752,40 @@ export default function ExtractPage({ cards, onImport }) {
           ? { subject: c.subject || '', part: c.part || '', question: c.question || '', mnemonic: '', detail: '', answer: c.answer || '' }
           : { subject: c.subject || '', part: c.part || '', question: c.question || '', mnemonic: c.mnemonic || '', detail: c.detail || '', answer: c.answer || '' }
       )
-      .filter((c) => c.question || c.mnemonic || c.detail || c.answer)
 
-    if (normalized.length === 0) {
-      throw new Error(extractType === 'qa' ? '핵심 Q&A 내용을 추출하지 못했습니다.' : '두문자 카드를 추출하지 못했습니다.')
+    // 두문자/설명 필수 검증 — AI가 거부 규칙 어긴 부실 카드를 코드단에서 자동 제거
+    const beforeFilter = normalized.length
+    const validated = normalized.filter((c) => isValidExtractedCard(c, extractType))
+    const droppedThisRun = beforeFilter - validated.length
+
+    if (validated.length === 0) {
+      throw new Error(extractType === 'qa'
+        ? '추출된 Q&A 카드의 답이 모두 비어 있어 사용할 수 없습니다. 문서를 좀 더 명확하게 정리해 다시 시도해주세요.'
+        : '추출된 두문자 카드에 설명(detail)이 모두 비어 있어 사용할 수 없습니다. 문서에 두문자 풀이가 함께 적혀 있는지 확인하고 다시 시도해주세요.')
     }
 
     const mergeBase = Array.isArray(options.mergeBase)
       ? options.mergeBase.map(({ _type, ...card }) => card)
       : []
 
-    const classified = mergeExtractedCards([...mergeBase, ...normalized])
+    const classified = mergeExtractedCards([...mergeBase, ...validated])
       .map((c) => ({ ...c, _type: classifyCard(c, cards.allCards || []).type }))
 
     setExtracted(classified)
     setSelected(new Set(classified.map((c, i) => i).filter((i) => classified[i]._type !== 'existing')))
     setTruncated(wasTruncated)
+    setDroppedCount(droppedThisRun)
     setFilterTab(options.mergeBase ? 'all' : 'new')
     setReviewFilter('all')
     setStatus('done')
     if (options.mergeBase) {
-      setImportMsg(`✓ 더 촘촘히 재추출 완료 · 총 ${classified.length}장으로 병합됨`)
+      setImportMsg(`✓ 더 촘촘히 재추출 완료 · 총 ${classified.length}장으로 병합됨${droppedThisRun > 0 ? ` (부실 ${droppedThisRun}장 자동 제외)` : ''}`)
       setTimeout(() => setImportMsg(''), 3500)
     }
   }, [cards.allCards, extractType])
 
   const runExtraction = useCallback(async (geminiPayload, label, options = {}) => {
-    setStatus('loading'); setErrorMsg(''); setTruncated(false)
+    setStatus('loading'); setErrorMsg(''); setTruncated(false); setDroppedCount(0)
     if (!options.mergeBase) { setExtracted([]); setSelected(new Set()) }
     try {
       setProgress(`${label}${options.dense ? ' 더 촘촘히 재추출' : ''} 분석 준비 중...`)
@@ -701,7 +802,7 @@ export default function ExtractPage({ cards, onImport }) {
   }, [geminiKey, extractType, finishExtraction])
 
   const runTextExtraction = useCallback(async (text, label, options = {}) => {
-    setStatus('loading'); setErrorMsg(''); setTruncated(false)
+    setStatus('loading'); setErrorMsg(''); setTruncated(false); setDroppedCount(0)
     if (!options.mergeBase) { setExtracted([]); setSelected(new Set()) }
     try {
       setProgress(`${label}${options.dense ? ' 더 촘촘히 재추출' : ''} 분석 준비 중...`)
@@ -821,6 +922,7 @@ export default function ExtractPage({ cards, onImport }) {
   const reset = () => {
     setFile(null); setStatus('idle'); setExtracted([]); setSelected(new Set())
     setErrorMsg(''); setTextInput(''); setTruncated(false); setLastSource(null); setReviewFilter('all')
+    setDroppedCount(0)
   }
 
   const inputStyle = { flex: 1, background: '#0f172a', border: '1px solid #334155', minWidth: 0, borderRadius: 10, padding: '10px 14px', color: '#e2e8f0', fontSize: 14, fontFamily: 'monospace', outline: 'none' }
@@ -946,6 +1048,12 @@ export default function ExtractPage({ cards, onImport }) {
 
       {status === 'done' && (
         <div style={{ width: '100%' }}>
+          {droppedCount > 0 && (
+            <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, color: '#86efac', fontSize: 13, lineHeight: 1.55 }}>
+              🧹 두문자나 설명이 비어 있던 <b>{droppedCount}장</b>을 자동으로 제외했습니다. 시험에 쓸 수 있는 카드만 남겼어요.
+            </div>
+          )}
+
           {truncated && (
             <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: 12, padding: '14px 16px', marginBottom: 16, color: '#fbbf24', fontSize: 13, lineHeight: 1.6 }}>
               ⚠️ <b>일부 결과가 불안정할 수 있습니다:</b> 응답이 중간에 잘렸거나 일부 텍스트 조각 분석에 실패했을 수 있으니, 누락이 보이면 <b>문서를 조금 더 작게 분할하여</b> 실행해 주세요.
