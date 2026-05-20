@@ -18,99 +18,65 @@ const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-
 const MAX_FILE_MB = 15
 const TEXT_CHUNK_CHARS = 9000
 const TEXT_CHUNK_OVERLAP = 600
+const DENSE_TEXT_CHUNK_CHARS = 5500
+const DENSE_TEXT_CHUNK_OVERLAP = 900
 const GEMINI_TIMEOUT_MS = 180000
 const GEMINI_MAX_OUTPUT_TOKENS = 50000
 const GEMINI_CHUNK_OUTPUT_TOKENS = 24000
 
-const MNEMONIC_PROMPT = `당신은 한국 법학 시험용 두문자(약어) 카드 추출 전문가입니다.
-사법시험·변호사시험·로스쿨 시험에 나오는 두문자를 단 하나도 놓치지 않고 추출하는 것이 임무입니다.
+const DENSE_PROMPT_SUFFIX = `\n\n【더 촘촘히 재추출 모드】\n- 이미 뽑힌 카드와 겹치더라도 누락 가능성이 있으면 다시 추출한다.\n- 큰 단락 하나를 카드 하나로 요약하지 말고, 요건·효과·예외·판례·정의·비교 포인트를 가능한 한 작은 단위로 쪼갠다.\n- 두문자 주변의 괄호, 표, 번호, 조문, 판례명, 예외 문구를 놓치지 않는다.\n- 불완전해 보이는 항목도 사용자가 검수할 수 있도록 카드 후보로 남긴다.`
 
-【핵심 원칙】
-1. 완전성 우선 — 확신이 60%만 들어도 추출. 거르는 건 사용자 몫.
-2. 절대 지어내지 말 것 — 문서에 없는 두문자·의미·조문은 0개. 추측 금지.
-3. 요약 금지 — 같은 주제라도 요건/효과/판례/예외는 각각 별도 카드로 분리.
-4. 원문 보존 — detail은 문서 표현을 최대한 그대로 옮길 것. 키워드만 뽑지 말 것.
+const MNEMONIC_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
 
-【두문자 인식 패턴 — 하나라도 해당하면 무조건 추출】
-- 점 구분: "이.가.게.귀.위", "동.매.철", "강.손.해.책"
-- 괄호/대괄호 설명형: "준.통.수 [준비완료·통지·수령]", "[의무위반/상당인과관계/손해범위]"
-- 꺽쇠 분리형: "<요건>이.가.게.귀.위 <효과>강.손.해.책" → 반드시 카드 2장으로
-- 조항 결합: "392조 강.손.해.책", "451조 동.기"
-- 한글 약어 나열: "모.사.실", "변.대.공"
-- 단어 축약: "출.구.정", "항.전", "적.기.해"
-- 영문/숫자 혼합: "파.판.5.도", "소.객.도 안.지"
-- 한자 포함: "생.원.유", "묘.지.명.철.귀.무.기.침"
-- 특수 표기: "저+건.동.경", "3아.미안.신변"
+【절대 규칙】
+- 문서에 실제로 있는 두문자는 단 하나도 놓치지 말 것.
+- 확신이 조금 부족해도 패턴에 해당하면 일단 추출할 것. 나중에 사용자가 판단한다.
+- 단, 문서에 없는 두문자나 의미를 지어내지 말 것.
+- 요약하지 말고, 카드 수를 줄이지 말고, 반복되는 형식의 항목도 각각 별도 카드로 뽑을 것.
 
-【출력 필드 작성 규칙】
+【두문자 인식 기준 — 아래 패턴 중 하나라도 해당하면 추출】
+1. 점(.) 구분형: "이.가.게.귀.위", "보.필.불.대", "동.매.철"
+2. 괄호 설명형: "준.통.수 [준비완료·통지·수령]"
+3. 한글 약어 나열: "모.사.실", "강.손.해.책", "변.대.공"
+4. 꺽쇠 요건/효과: "<요건>이.가.게.귀.위 <효과>강.손.해.책" → 각각 별도 카드로
+5. 비고 설명형: "[의무위반/상당인과관계/손해범위]" 앞에 두문자가 있으면 추출
+6. 조항 번호와 결합: "392조 강.손.해.책", "451조 동.기"
+7. 단어 축약형: "출.구.정", "항.전", "적.기.해"
+8. 영어·숫자 포함: "파.판.5.도", "소.객.도 안.지"
+9. 한자 포함: "생.원.유", "묘.지.명.철.귀.무.기.침"
+10. 특수 표기: "저+건.동.경", "3아.미안.신변"
 
-▶ question — 이 두문자가 정답이 될 수 있는 시험 문제 형식
-   ✓ "이행지체의 성립요건 5가지는?"
-   ✓ "민법 392조에 따른 이행지체의 효과는?"
-   ✗ "이행지체" (단어만 — 금지)
-   ✗ "이행지체에 대해 설명하시오" (너무 추상적 — 금지)
+【추출 방법】
+- 문서를 처음부터 끝까지 한 줄씩 읽으며 위 패턴을 전부 탐색한다.
+- 두문자 발견 시 앞뒤 문맥으로 question(이 두문자가 답이 되는 질문)을 만든다.
+- 같은 주제에 요건/효과/판례/예외가 따로 있으면 카드도 따로 만든다.
+- detail에는 두문자의 각 글자가 무엇의 약자인지 문서 표현을 최대한 보존해 적는다.
+- 같은 단락에 두문자가 여러 개 있으면 각각 별도 카드로 분리한다.
+- 분량이 많아도 생략하지 말고 가능한 모든 카드를 출력한다.
 
-▶ mnemonic — 두문자 표기 그대로 (점·꺽쇠·기호 보존)
-   ✓ "이.가.게.귀.위"
-   ✗ "이가게귀위" (구분자 제거 금지)
-   ✗ "이행지체 5요건" (이건 question 영역)
+【과목·단원 분류】
+- subject: 법 과목명. 예: 민법, 형법, 헌법, 행정법, 민사소송법, 상법
+- part: 장·절·주제 단위. 예: 채권총론, 물권법, 법률행위, 소송요건
+- 문서 제목·목차·소제목이 있으면 그 구조를 그대로 사용한다.
+- 판단이 어려우면 빈 문자열 대신 "미분류"로 둔다.
 
-▶ detail — 각 글자의 의미를 번호 매겨 풀어쓰기
-   형식: "① 풀이1 / ② 풀이2 / ③ 풀이3 ..."
-   - 글자 수와 항목 수 반드시 일치
-   - 단순 키워드("이행기")가 아니라 문서의 정식 표현("이행기가 도래할 것")으로
-   - 문서에 부연·괄호 설명이 있으면 그것도 함께 보존
+【출력 형식 — 순수 JSON 배열만】
+[{"subject":"과목명","part":"단원명","question":"질문","mnemonic":"두문자","detail":"① 의미1 / ② 의미2 ..."}]
 
-【모범 예시 — 이대로 따라 할 것】
+최종 점검: 출력 전 문서를 다시 훑어 누락된 두문자가 없는지 확인하라.`
 
-예시1) 문서: "이행지체 요건 — 이.가.게.귀.위 [이행기 도래·이행 가능·이행 게을리·귀책사유·위법성]"
-출력:
-{"subject":"민법","part":"채권총론","question":"이행지체의 성립요건 5가지는?","mnemonic":"이.가.게.귀.위","detail":"① 이행기가 도래할 것 / ② 이행이 가능할 것 / ③ 채무자가 이행을 게을리할 것 / ④ 채무자의 귀책사유 / ⑤ 이행하지 않는 것이 위법할 것"}
+const QA_PROMPT = `당신은 법학 시험 학습 카드를 만드는 전문가입니다.
+질문-답 형태의 학습 카드를 순수 JSON 배열로만 추출하세요.
 
-예시2) 문서: "<요건>이.가.게.귀.위 <효과>강.손.해.책 (392조)"
-→ 반드시 카드 2장:
-{"subject":"민법","part":"채권총론","question":"이행지체의 성립요건은?","mnemonic":"이.가.게.귀.위","detail":"① 이행기 도래 / ② 이행 가능 / ③ 이행 게을리 / ④ 귀책사유 / ⑤ 위법성"}
-{"subject":"민법","part":"채권총론","question":"이행지체의 효과는? (민법 392조)","mnemonic":"강.손.해.책","detail":"① 강제이행 / ② 손해배상 / ③ 계약해제 / ④ 책임가중"}
+【절대 규칙】
+- 시험에 나올 핵심 개념·요건·효과·판례·정의·예외를 빠짐없이 카드화할 것.
+- 요약본 몇 개만 만들지 말고, 한 카드에는 하나의 개념만 담아 많이 만들 것.
+- 문서에 없는 내용을 지어내지 말 것.
 
-예시3) 문서: "준.통.수 [채권자가 수령준비 완료 · 채무자에게 통지 · 수령]"
-출력:
-{"subject":"민법","part":"채권총론","question":"채권자지체의 요건 3가지는?","mnemonic":"준.통.수","detail":"① 채권자의 수령준비 완료 / ② 채무자에 대한 통지 / ③ 수령(또는 수령에 협력)"}
+【출력 형식 — 순수 JSON 배열만】
+[{"subject":"과목명","part":"파트명","question":"질문","answer":"답"}]
 
-【과목·단원】
-- subject: 민법 / 형법 / 헌법 / 행정법 / 민사소송법 / 형사소송법 / 상법 등 정식 과목명
-- part: 문서의 장·절·단원 표기를 그대로 사용 (예: 채권총론, 물권법, 법률행위, 소송요건)
-- 불명확하면 빈 문자열 대신 "미분류"
-
-【출력 형식】
-순수 JSON 배열만. 코드블록·서문·설명·말꼬리 일절 금지.
-[{"subject":"","part":"","question":"","mnemonic":"","detail":""}, ...]
-
-【최종 점검】출력 직전에 문서를 다시 훑어 누락된 두문자가 없는지 확인하라. 패턴에 해당하는데 빠진 게 있으면 추가하라. 의심되면 추출하는 쪽을 선택하라.`
-
-const QA_PROMPT = `당신은 한국 법학 시험 학습 카드 제작 전문가입니다.
-시험에 나올 핵심 개념·요건·효과·판례·정의·예외를 Q&A 형태 카드로 빠짐없이 추출하세요.
-
-【원칙】
-1. 한 카드에는 한 개념만. 절대 묶어서 요약하지 말 것.
-2. 문서에 없는 내용 지어내지 말 것.
-3. 카드 수가 많아도 좋음. 누락이 가장 큰 죄.
-
-【작성 규칙】
-▶ question — 시험 문제처럼 구체적으로
-   ✓ "민법 제390조 채무불이행에 따른 손해배상의 요건은?"
-   ✗ "채무불이행이란?"
-▶ answer — 문서 표현을 살려 정확히. 번호·구조 보존
-   "① ... / ② ... / ③ ..." 또는 "요건: ... / 효과: ..."
-
-【예시】
-문서: "선의취득(민법 249조) — 동산을 평온·공연하게 양수한 자가 선의·무과실이면 즉시 소유권 취득"
-출력:
-{"subject":"민법","part":"물권법","question":"동산 선의취득(민법 249조)의 요건은?","answer":"① 동산일 것 / ② 평온·공연하게 양수 / ③ 양수인이 선의·무과실 / 효과: 즉시 소유권 취득"}
-
-【출력】순수 JSON 배열만.
-[{"subject":"","part":"","question":"","answer":""}]
-
-【점검】출력 전 문서를 다시 훑어 누락된 핵심 쟁점이 없는지 확인하라.`
+최종 점검: 출력 전 문서를 다시 훑어 누락된 핵심 내용이 없는지 확인하라.`
 
 // Gemini 규격 전용 REST API 송신 함수 (1회)
 async function callGemini(apiKey, model, parts, systemPrompt, options = {}) {
@@ -273,15 +239,17 @@ function repairJSON(str) {
   throw new Error('JSON 파싱 실패: AI 응답에서 유효한 JSON 배열을 찾지 못했습니다.')
 }
 
-function splitTextIntoChunks(text) {
+function splitTextIntoChunks(text, options = {}) {
   const source = String(text || '').replace(/\r\n/g, '\n').trim()
   if (!source) return []
-  if (source.length <= TEXT_CHUNK_CHARS) return [source]
+  const chunkChars = options.chunkChars || TEXT_CHUNK_CHARS
+  const overlap = options.overlap || TEXT_CHUNK_OVERLAP
+  if (source.length <= chunkChars) return [source]
 
   const chunks = []
   let start = 0
   while (start < source.length) {
-    let end = Math.min(start + TEXT_CHUNK_CHARS, source.length)
+    let end = Math.min(start + chunkChars, source.length)
     if (end < source.length) {
       const window = source.slice(start, end)
       const breakpoints = [
@@ -291,29 +259,34 @@ function splitTextIntoChunks(text) {
         window.lastIndexOf('. '),
       ]
       const best = Math.max(...breakpoints)
-      if (best > TEXT_CHUNK_CHARS * 0.55) end = start + best + 1
+      if (best > chunkChars * 0.55) end = start + best + 1
     }
 
     const chunk = source.slice(start, end).trim()
     if (chunk) chunks.push(chunk)
     if (end >= source.length) break
-    start = Math.max(end - TEXT_CHUNK_OVERLAP, start + 1)
+    start = Math.max(end - overlap, start + 1)
   }
   return chunks
 }
 
-function makeChunkPrompt(chunk, index, total) {
-  const reminder = `핵심: detail은 "① ... / ② ..." 형식으로 글자 수만큼, 문서 원문 표현을 살려서 작성. 두문자만 뽑고 의미를 빈약하게 남기지 말 것.`
+function makeChunkPrompt(chunk, index, total, options = {}) {
+  const denseGuide = options.dense
+    ? `\n더 촘촘히 재추출 모드입니다. 이미 추출된 카드 수가 적다고 가정하고, 표·괄호·번호·판례·예외 문구까지 더 작은 단위로 쪼개세요.\n`
+    : ''
   if (total <= 1) {
-    return `다음 텍스트에서 카드를 빠짐없이 추출하세요. 요약하지 말고 작은 항목도 별도 카드로.
-${reminder}
+    return `다음 텍스트에서 카드를 최대한 많이, 빠짐없이 추출해주세요.
+요약하지 말고 두문자/핵심 쟁점이 보이면 각각 별도 카드로 만드세요.
+${denseGuide}
 출력은 JSON 배열만 반환하세요.
 
 ${chunk}`
   }
   return `다음은 전체 문서 중 ${index + 1}/${total}번째 조각입니다.
-이 조각의 두문자/핵심 쟁점을 모두 추출하세요. 앞뒤 조각과 일부 겹침이 있어도 누락 방지를 우선합니다.
-${reminder}
+이 조각에 있는 두문자/핵심 쟁점을 최대한 많이 추출하세요.
+요약하지 말고, 작은 항목도 카드로 분리하세요.
+앞뒤 조각과 일부 문맥이 겹칠 수 있으니 완전 동일한 중복만 줄이되, 누락 방지를 더 우선하세요.
+${denseGuide}
 출력은 JSON 배열만 반환하세요.
 
 ${chunk}`
@@ -356,8 +329,11 @@ function mergeExtractedCards(cards) {
   return Array.from(map.values())
 }
 
-async function extractTextWithChunks(apiKey, text, systemPrompt, label, setProgress) {
-  const chunks = splitTextIntoChunks(text)
+async function extractTextWithChunks(apiKey, text, systemPrompt, label, setProgress, options = {}) {
+  const chunks = splitTextIntoChunks(text, options.dense
+    ? { chunkChars: DENSE_TEXT_CHUNK_CHARS, overlap: DENSE_TEXT_CHUNK_OVERLAP }
+    : undefined
+  )
   if (chunks.length === 0) return { data: [], truncated: false }
 
   const collected = []
@@ -369,7 +345,7 @@ async function extractTextWithChunks(apiKey, text, systemPrompt, label, setProgr
     try {
       const raw = await extractWithGemini(
         apiKey,
-        [{ text: makeChunkPrompt(chunks[i], i, chunks.length) }],
+        [{ text: makeChunkPrompt(chunks[i], i, chunks.length, { dense: options.dense }) }],
         systemPrompt,
         (msg) => setProgress(`${prefix} · ${msg.replace(/^☁️\s*/, '')}`),
         { maxOutputTokens: chunks.length > 1 ? GEMINI_CHUNK_OUTPUT_TOKENS : GEMINI_MAX_OUTPUT_TOKENS }
@@ -401,6 +377,57 @@ const TYPE_META = {
   new:      { label: '새 카드',     color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: '#22c55e' },
   upgrade:  { label: '내용 보강',   color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: '#f59e0b' },
   existing: { label: '이미 보유',   color: '#475569', bg: 'rgba(71,85,105,0.1)',  border: '#334155' },
+}
+
+const REVIEW_FILTERS = [
+  ['all', '전체'],
+  ['needsReview', '검수 필요'],
+  ['unclassified', '미분류'],
+  ['missingCore', '내용 빈칸'],
+  ['mnemonic', '두문자'],
+  ['qa', 'Q&A'],
+]
+
+function isUnclassified(value) {
+  const v = String(value || '').trim()
+  return !v || v === '미분류'
+}
+
+function getReviewIssues(card) {
+  const issues = []
+  const isQA = !card?.mnemonic && card?.answer != null
+  if (isUnclassified(card?.subject)) issues.push('과목 확인')
+  if (isUnclassified(card?.part)) issues.push('단원 확인')
+  if (!String(card?.question || '').trim()) issues.push('질문 없음')
+  if (isQA) {
+    if (!String(card?.answer || '').trim()) issues.push('답 없음')
+  } else {
+    if (!String(card?.mnemonic || '').trim()) issues.push('두문자 없음')
+    if (!String(card?.detail || '').trim()) issues.push('설명 없음')
+  }
+  if (card?._type === 'upgrade') issues.push('기존 카드와 비교')
+  return issues
+}
+
+function matchesReviewFilter(card, filter) {
+  if (filter === 'all') return true
+  if (filter === 'needsReview') return getReviewIssues(card).length > 0
+  if (filter === 'unclassified') return isUnclassified(card?.subject) || isUnclassified(card?.part)
+  if (filter === 'missingCore') return getReviewIssues(card).some((x) => ['질문 없음', '답 없음', '두문자 없음', '설명 없음'].includes(x))
+  if (filter === 'mnemonic') return !!card?.mnemonic
+  if (filter === 'qa') return !card?.mnemonic && card?.answer != null
+  return true
+}
+
+function buildPrompt(extractType, dense = false) {
+  const base = extractType === 'qa' ? QA_PROMPT : MNEMONIC_PROMPT
+  return dense ? `${base}${DENSE_PROMPT_SUFFIX}` : base
+}
+
+function buildPdfInstruction(dense = false) {
+  return dense
+    ? '더 촘촘히 재추출합니다. 이 PDF를 처음부터 끝까지 다시 훑고, 요건·효과·예외·판례·조문·표·괄호 설명·두문자를 작은 단위로 최대한 많이 카드화하세요. 이미 나온 카드와 겹쳐도 누락 방지가 우선입니다. 출력은 JSON 배열만 반환하세요.'
+    : '이 문서의 모든 내용을 처음부터 끝까지 훑어 카드를 최대한 많이, 빠짐없이 추출해주세요. 요약하지 말고 두문자/핵심 쟁점이 보이면 각각 별도 카드로 만드세요. 출력은 JSON 배열만 반환하세요.'
 }
 
 function DataListInput({ id, value, onChange, placeholder, style, options }) {
@@ -488,6 +515,7 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getP
   const [draft, setDraft] = useState(card)
   const meta = TYPE_META[type] || TYPE_META.new
   const isQA = !card.mnemonic && card.answer != null
+  const issues = getReviewIssues(card)
 
   let safeParts = []
   try { if (typeof getParts === 'function') { const partsResult = getParts(draft?.subject || ''); if (Array.isArray(partsResult)) safeParts = partsResult } } catch(e) {}
@@ -531,6 +559,9 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getP
           <span style={{ fontSize: 10, borderRadius: 4, padding: '2px 7px', fontWeight: 600, background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>{meta.label}</span>
           <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.subject || '미분류'}</span>
           <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.part || '미분류'}</span>
+          {issues.slice(0, 3).map((issue) => (
+            <span key={issue} style={{ background: 'rgba(245,158,11,0.12)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.35)', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{issue}</span>
+          ))}
         </div>
         <div onClick={onToggle} style={{ cursor: 'pointer', wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
           <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
@@ -562,11 +593,13 @@ export default function ExtractPage({ cards, onImport }) {
   const [extracted, setExtracted] = useState([])
   const [selected, setSelected] = useState(new Set())
   const [filterTab, setFilterTab] = useState('new')
+  const [reviewFilter, setReviewFilter] = useState('all')
   const [progress, setProgress] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [importMsg, setImportMsg] = useState('')
   const [loadingPct, setLoadingPct] = useState(0)
   const [truncated, setTruncated] = useState(false)
+  const [lastSource, setLastSource] = useState(null)
   const inputRef = useRef(null)
 
   useEffect(() => {
@@ -613,7 +646,7 @@ export default function ExtractPage({ cards, onImport }) {
     const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = () => rej(new Error('파일 읽기 실패')); r.readAsDataURL(f)
   })
 
-  const finishExtraction = useCallback((parsed, wasTruncated) => {
+  const finishExtraction = useCallback((parsed, wasTruncated, options = {}) => {
     if (!Array.isArray(parsed) || parsed.length === 0) {
       throw new Error(extractType === 'qa' ? '핵심 Q&A 내용을 추출하지 못했습니다.' : '두문자 카드를 추출하지 못했습니다.')
     }
@@ -631,41 +664,52 @@ export default function ExtractPage({ cards, onImport }) {
       throw new Error(extractType === 'qa' ? '핵심 Q&A 내용을 추출하지 못했습니다.' : '두문자 카드를 추출하지 못했습니다.')
     }
 
-    const classified = mergeExtractedCards(normalized)
+    const mergeBase = Array.isArray(options.mergeBase)
+      ? options.mergeBase.map(({ _type, ...card }) => card)
+      : []
+
+    const classified = mergeExtractedCards([...mergeBase, ...normalized])
       .map((c) => ({ ...c, _type: classifyCard(c, cards.allCards || []).type }))
 
     setExtracted(classified)
     setSelected(new Set(classified.map((c, i) => i).filter((i) => classified[i]._type !== 'existing')))
     setTruncated(wasTruncated)
-    setFilterTab('new')
+    setFilterTab(options.mergeBase ? 'all' : 'new')
+    setReviewFilter('all')
     setStatus('done')
+    if (options.mergeBase) {
+      setImportMsg(`✓ 더 촘촘히 재추출 완료 · 총 ${classified.length}장으로 병합됨`)
+      setTimeout(() => setImportMsg(''), 3500)
+    }
   }, [cards.allCards, extractType])
 
-  const runExtraction = useCallback(async (geminiPayload, label) => {
-    setStatus('loading'); setExtracted([]); setSelected(new Set()); setErrorMsg(''); setTruncated(false)
+  const runExtraction = useCallback(async (geminiPayload, label, options = {}) => {
+    setStatus('loading'); setErrorMsg(''); setTruncated(false)
+    if (!options.mergeBase) { setExtracted([]); setSelected(new Set()) }
     try {
-      setProgress(`${label} 분석 준비 중...`)
-      const prompt = extractType === 'qa' ? QA_PROMPT : MNEMONIC_PROMPT
+      setProgress(`${label}${options.dense ? ' 더 촘촘히 재추출' : ''} 분석 준비 중...`)
+      const prompt = buildPrompt(extractType, options.dense)
       if (!geminiKey) throw new Error("Gemini API 키가 필수입니다.")
 
       const raw = await extractWithGemini(geminiKey, geminiPayload, prompt, setProgress)
       const { data: parsed, truncated: wasTruncated } = repairJSON(raw)
-      finishExtraction(parsed, wasTruncated)
+      finishExtraction(parsed, wasTruncated, { mergeBase: options.mergeBase })
     } catch (e) {
       setErrorMsg(e.message)
       setStatus('error')
     }
   }, [geminiKey, extractType, finishExtraction])
 
-  const runTextExtraction = useCallback(async (text, label) => {
-    setStatus('loading'); setExtracted([]); setSelected(new Set()); setErrorMsg(''); setTruncated(false)
+  const runTextExtraction = useCallback(async (text, label, options = {}) => {
+    setStatus('loading'); setErrorMsg(''); setTruncated(false)
+    if (!options.mergeBase) { setExtracted([]); setSelected(new Set()) }
     try {
-      setProgress(`${label} 분석 준비 중...`)
-      const prompt = extractType === 'qa' ? QA_PROMPT : MNEMONIC_PROMPT
+      setProgress(`${label}${options.dense ? ' 더 촘촘히 재추출' : ''} 분석 준비 중...`)
+      const prompt = buildPrompt(extractType, options.dense)
       if (!geminiKey) throw new Error("Gemini API 키가 필수입니다.")
 
-      const { data: parsed, truncated: wasTruncated } = await extractTextWithChunks(geminiKey, text, prompt, label, setProgress)
-      finishExtraction(parsed, wasTruncated)
+      const { data: parsed, truncated: wasTruncated } = await extractTextWithChunks(geminiKey, text, prompt, label, setProgress, { dense: options.dense })
+      finishExtraction(parsed, wasTruncated, { mergeBase: options.mergeBase })
     } catch (e) {
       setErrorMsg(e.message)
       setStatus('error')
@@ -691,12 +735,14 @@ export default function ExtractPage({ cards, onImport }) {
     }
     if (ext === 'txt') {
       const text = await new Promise((res) => { const r = new FileReader(); r.onload = (e) => res(e.target.result); r.readAsText(f) })
+      setLastSource({ kind: 'text', label: f.name, text })
       await runTextExtraction(text, f.name)
     } else {
       const base64 = await readBase64(f)
+      setLastSource({ kind: 'pdf', label: f.name, file: f })
       const geminiPayload = [
         { inline_data: { mime_type: 'application/pdf', data: base64 } },
-        { text: '이 문서의 모든 페이지를 처음부터 끝까지 훑어 카드를 빠짐없이 추출해주세요. 요약 금지, 두문자/핵심 쟁점은 각각 별도 카드로. detail은 "① ... / ② ..." 형식으로 글자 수만큼, 문서 원문 표현을 살려서 작성. 출력은 JSON 배열만 반환하세요.' },
+        { text: buildPdfInstruction(false) },
       ]
       await runExtraction(geminiPayload, f.name)
     }
@@ -706,8 +752,25 @@ export default function ExtractPage({ cards, onImport }) {
     const trimmed = textInput.trim();
     if (!geminiKey || !trimmed) return
 
+    setLastSource({ kind: 'text', label: '텍스트', text: trimmed })
     await runTextExtraction(trimmed, '텍스트')
   }, [geminiKey, textInput, runTextExtraction])
+
+  const rerunDenseExtraction = useCallback(async () => {
+    if (!lastSource || extracted.length === 0) return
+    const mergeBase = extracted
+    if (lastSource.kind === 'text') {
+      await runTextExtraction(lastSource.text, lastSource.label || '텍스트', { dense: true, mergeBase })
+      return
+    }
+    if (lastSource.kind === 'pdf' && lastSource.file) {
+      const base64 = await readBase64(lastSource.file)
+      await runExtraction([
+        { inline_data: { mime_type: 'application/pdf', data: base64 } },
+        { text: buildPdfInstruction(true) },
+      ], lastSource.label || lastSource.file.name || 'PDF', { dense: true, mergeBase })
+    }
+  }, [lastSource, extracted, runExtraction, runTextExtraction])
 
   const toggle = (i) => setSelected((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
 
@@ -722,7 +785,18 @@ export default function ExtractPage({ cards, onImport }) {
     existing: extracted.filter((c) => c._type === 'existing').length,
   }
 
-  const visible = extracted.map((c, i) => ({ c, i })).filter(({ c }) => filterTab === 'all' || c._type === filterTab)
+  const reviewCounts = {
+    selected: selected.size,
+    needsReview: extracted.filter((c) => getReviewIssues(c).length > 0).length,
+    unclassified: extracted.filter((c) => matchesReviewFilter(c, 'unclassified')).length,
+    missingCore: extracted.filter((c) => matchesReviewFilter(c, 'missingCore')).length,
+    mnemonic: extracted.filter((c) => matchesReviewFilter(c, 'mnemonic')).length,
+    qa: extracted.filter((c) => matchesReviewFilter(c, 'qa')).length,
+  }
+
+  const visible = extracted
+    .map((c, i) => ({ c, i }))
+    .filter(({ c }) => (filterTab === 'all' || c._type === filterTab) && matchesReviewFilter(c, reviewFilter))
 
   const toggleAll = () => {
     const visibleIdxs = visible.map(({ i }) => i)
@@ -746,7 +820,7 @@ export default function ExtractPage({ cards, onImport }) {
 
   const reset = () => {
     setFile(null); setStatus('idle'); setExtracted([]); setSelected(new Set())
-    setErrorMsg(''); setTextInput(''); setTruncated(false)
+    setErrorMsg(''); setTextInput(''); setTruncated(false); setLastSource(null); setReviewFilter('all')
   }
 
   const inputStyle = { flex: 1, background: '#0f172a', border: '1px solid #334155', minWidth: 0, borderRadius: 10, padding: '10px 14px', color: '#e2e8f0', fontSize: 14, fontFamily: 'monospace', outline: 'none' }
@@ -861,7 +935,12 @@ export default function ExtractPage({ cards, onImport }) {
         <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 16, padding: '28px', textAlign: 'center', width: '100%', boxSizing: 'border-box' }}>
           <div style={{ fontSize: 28, marginBottom: 10 }}>⚠️</div>
           <div style={{ color: '#fca5a5', fontSize: 14, marginBottom: 16, wordBreak: 'keep-all', whiteSpace: 'pre-wrap' }}>{errorMsg}</div>
-          <button onClick={reset} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 24px', fontSize: 13, cursor: 'pointer' }}>다시 시도</button>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {extracted.length > 0 && (
+              <button onClick={() => setStatus('done')} style={{ background: '#1e293b', color: '#94a3b8', border: 'none', borderRadius: 10, padding: '9px 20px', fontSize: 13, cursor: 'pointer' }}>기존 결과 보기</button>
+            )}
+            <button onClick={reset} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 24px', fontSize: 13, cursor: 'pointer' }}>다시 시도</button>
+          </div>
         </div>
       )}
 
@@ -874,6 +953,36 @@ export default function ExtractPage({ cards, onImport }) {
           )}
 
           <GroupEditorPanel extracted={extracted} onUpdateGroup={updateGroup} subjects={allSubjects} getParts={getPartsForSubject} />
+
+          <div style={{ background: 'rgba(15,23,42,0.72)', border: '1px solid #1e293b', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 800 }}>검수 대시보드</div>
+                <div style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>미분류·빈칸·기존 카드 보강 후보를 먼저 확인하세요.</div>
+              </div>
+              <button onClick={rerunDenseExtraction} disabled={!lastSource || extracted.length === 0} style={{
+                background: (!lastSource || extracted.length === 0) ? '#1e293b' : 'linear-gradient(135deg,#f59e0b,#d97706)',
+                color: (!lastSource || extracted.length === 0) ? '#475569' : '#111827',
+                border: 'none', borderRadius: 10, padding: '9px 14px', fontSize: 12,
+                cursor: (!lastSource || extracted.length === 0) ? 'not-allowed' : 'pointer', fontWeight: 800, whiteSpace: 'nowrap',
+              }}>더 촘촘히 재추출</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: 8 }}>
+              {[
+                ['선택', reviewCounts.selected, '#818cf8'],
+                ['검수 필요', reviewCounts.needsReview, '#f59e0b'],
+                ['미분류', reviewCounts.unclassified, '#fbbf24'],
+                ['빈칸', reviewCounts.missingCore, '#ef4444'],
+                ['보강', counts.upgrade, '#f59e0b'],
+                ['이미 보유', counts.existing, '#64748b'],
+              ].map(([label, count, color]) => (
+                <div key={label} style={{ background: 'rgba(10,15,30,0.55)', border: '1px solid #1e293b', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ color, fontSize: 19, fontWeight: 900, lineHeight: 1 }}>{count}</div>
+                  <div style={{ color: '#64748b', fontSize: 11, marginTop: 5 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
             {[
@@ -889,6 +998,22 @@ export default function ExtractPage({ cards, onImport }) {
             <button onClick={toggleAll} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #1e293b', borderRadius: 8, padding: '5px 12px', color: '#475569', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               {visible.length > 0 && visible.every(({ i }) => selected.has(i)) ? '전체 해제' : '전체 선택'}
             </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ color: '#64748b', fontSize: 12, marginRight: 2 }}>검수 필터</span>
+            {REVIEW_FILTERS.map(([key, label]) => {
+              const count = key === 'all' ? extracted.length : reviewCounts[key] ?? extracted.filter((c) => matchesReviewFilter(c, key)).length
+              return (
+                <button key={key} onClick={() => setReviewFilter(key)} style={{
+                  background: reviewFilter === key ? 'rgba(99,102,241,0.16)' : 'none',
+                  border: `1px solid ${reviewFilter === key ? '#6366f1' : '#1e293b'}`,
+                  color: reviewFilter === key ? '#c4b5fd' : '#475569',
+                  borderRadius: 8, padding: '5px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}>{label} {count}</button>
+              )
+            })}
+            <span style={{ color: '#334155', fontSize: 12 }}>표시 {visible.length}장</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', overflowX: 'hidden', marginBottom: 14, width: '100%', boxSizing: 'border-box' }}>
