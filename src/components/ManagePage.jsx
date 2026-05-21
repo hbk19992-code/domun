@@ -75,6 +75,10 @@ export default function ManagePage({ cards }) {
   const [editingCardId, setEditingCardId] = useState(null)
   const [editCardDraft, setEditCardDraft] = useState(null)
 
+  // ── [상태] X4 내보내기 범위 선택 관련 ──
+  const [x4Sub, setX4Sub] = useState('전체')
+  const [x4Part, setX4Part] = useState('전체')
+
   // ── 옵션 메모이제이션 ──
   const delOptions = useMemo(() => {
     const base = delSub === '전체' ? userCards : userCards.filter((c) => c.subject === delSub)
@@ -90,6 +94,26 @@ export default function ManagePage({ cards }) {
     const base = listSub === '전체' ? userCards : userCards.filter((c) => c.subject === listSub)
     return [...new Set(base.map((c) => c.part))]
   }, [userCards, listSub])
+
+  const x4PartOptions = useMemo(() => {
+    const base = x4Sub === '전체' ? allCards : allCards.filter((c) => c.subject === x4Sub)
+    return [...new Set(base.map((c) => c.part).filter(Boolean))]
+  }, [allCards, x4Sub])
+
+  const x4Cards = useMemo(() => {
+    return allCards.filter((c) => {
+      const matchSub = x4Sub === '전체' || c.subject === x4Sub
+      const matchPart = x4Part === '전체' || c.part === x4Part
+      return matchSub && matchPart
+    })
+  }, [allCards, x4Sub, x4Part])
+
+  const x4Label = useMemo(() => {
+    if (x4Sub === '전체' && x4Part === '전체') return '전체'
+    if (x4Part === '전체') return x4Sub
+    if (x4Sub === '전체') return x4Part
+    return `${x4Sub}_${x4Part}`
+  }, [x4Sub, x4Part])
 
   const targetCount = countBy({ subject: delSub, part: delPart })
   const targetEditCount = countBy({ subject: editOldSub, part: editOldPart })
@@ -356,10 +380,23 @@ export default function ManagePage({ cards }) {
       {/* X4 리더용 파일 생성 섹션 */}
       <div style={S.section}>
         <div style={S.title}>Xteink X4용 내보내기</div>
-        <div style={S.sub}>X4 기본 리더에서 바로 읽기 좋은 UTF-8 TXT와 작은 화면용 EPUB 파일을 만듭니다. 총 {allCards.length}개 카드가 포함됩니다.</div>
+        <div style={S.sub}>과목과 단원을 골라 X4 기본 리더에서 읽기 좋은 UTF-8 TXT 또는 작은 화면용 EPUB 파일을 만듭니다.</div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+          <select style={{ ...S.select, flex: 1, minWidth: 120 }} value={x4Sub}
+            onChange={(e) => { setX4Sub(e.target.value); setX4Part('전체') }}>
+            <option>전체</option>{subjects.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select style={{ ...S.select, flex: 1, minWidth: 120 }} value={x4Part}
+            onChange={(e) => setX4Part(e.target.value)}>
+            <option>전체</option>{x4PartOptions.map(p => <option key={p}>{p}</option>)}
+          </select>
+        </div>
+        <div style={{ ...S.sub, marginBottom: 12 }}>
+          선택 범위: {x4Label} · {x4Cards.length}개 카드
+        </div>
         <div style={S.grid}>
-          <button style={S.btn(false)} onClick={exportX4TXT}>TXT 만들기</button>
-          <button style={S.btn(false)} onClick={exportX4EPUB}>EPUB 만들기</button>
+          <button style={S.btn(false)} onClick={() => exportX4TXT(x4Cards, x4Label)}>TXT 만들기</button>
+          <button style={S.btn(false)} onClick={() => exportX4EPUB(x4Cards, x4Label)}>EPUB 만들기</button>
         </div>
       </div>
 

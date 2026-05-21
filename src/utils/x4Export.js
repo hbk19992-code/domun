@@ -4,6 +4,15 @@ function todayStamp() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function cleanFilename(value) {
+  const text = cleanText(value) || 'cards'
+  return text
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
 function cleanText(value) {
   return String(value ?? '').replace(/\r\n?/g, '\n').trim()
 }
@@ -50,10 +59,10 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function txtForCards(cards) {
+function txtForCards(cards, title = '두문자 카드') {
   const normalized = normalizeCards(cards)
   const lines = [
-    '두문자 카드',
+    title,
     `생성일: ${todayStamp()}`,
     `카드 수: ${normalized.length}`,
     '',
@@ -93,7 +102,7 @@ function paragraphHtml(value) {
   )).join('\n')
 }
 
-function cardsXhtml(cards) {
+function cardsXhtml(cards, title = '두문자 카드') {
   const normalized = normalizeCards(cards)
   const sections = groupCards(normalized).map((group) => {
     const articles = group.cards.map((card, idx) => {
@@ -125,18 +134,18 @@ function cardsXhtml(cards) {
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ko" lang="ko">
 <head>
-  <title>두문자 카드</title>
+  <title>${escapeXml(title)}</title>
   <link rel="stylesheet" type="text/css" href="styles.css"/>
 </head>
 <body>
-  <h1>두문자 카드</h1>
+  <h1>${escapeXml(title)}</h1>
   <p class="meta">${normalized.length}개 카드 · ${todayStamp()}</p>
   ${sections || '<p>내보낼 카드가 없습니다.</p>'}
 </body>
 </html>`
 }
 
-function navXhtml() {
+function navXhtml(title = '두문자 카드') {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="ko" lang="ko">
@@ -145,19 +154,19 @@ function navXhtml() {
   <nav epub:type="toc" id="toc">
     <h1>목차</h1>
     <ol>
-      <li><a href="cards.xhtml">두문자 카드</a></li>
+      <li><a href="cards.xhtml">${escapeXml(title)}</a></li>
     </ol>
   </nav>
 </body>
 </html>`
 }
 
-function packageOpf(id, modified) {
+function packageOpf(id, modified, title = '두문자 카드') {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="book-id">${id}</dc:identifier>
-    <dc:title>두문자 카드</dc:title>
+    <dc:title>${escapeXml(title)}</dc:title>
     <dc:language>ko</dc:language>
     <dc:creator>두문자 카드</dc:creator>
     <meta property="dcterms:modified">${modified}</meta>
@@ -338,13 +347,15 @@ function createStoredZip(files) {
   return concatBytes([...localParts, central, endRecord])
 }
 
-export function exportX4Txt(cards) {
-  const text = txtForCards(cards)
+export function exportX4Txt(cards, label = '전체') {
+  const title = `두문자 카드 - ${label}`
+  const text = txtForCards(cards, title)
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
-  downloadBlob(blob, `domun_x4_cards_${todayStamp()}.txt`)
+  downloadBlob(blob, `domun_x4_${cleanFilename(label)}_${todayStamp()}.txt`)
 }
 
-export function exportX4Epub(cards) {
+export function exportX4Epub(cards, label = '전체') {
+  const title = `두문자 카드 - ${label}`
   const modified = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
   const randomId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
   const id = `urn:uuid:${randomId}`
@@ -356,13 +367,13 @@ export function exportX4Epub(cards) {
     <rootfile full-path="OEBPS/package.opf" media-type="application/oebps-package+xml"/>
   </rootfiles>
 </container>`) },
-    { name: 'OEBPS/package.opf', bytes: textEncoder.encode(packageOpf(id, modified)) },
-    { name: 'OEBPS/nav.xhtml', bytes: textEncoder.encode(navXhtml()) },
+    { name: 'OEBPS/package.opf', bytes: textEncoder.encode(packageOpf(id, modified, title)) },
+    { name: 'OEBPS/nav.xhtml', bytes: textEncoder.encode(navXhtml(title)) },
     { name: 'OEBPS/styles.css', bytes: textEncoder.encode(stylesCss) },
-    { name: 'OEBPS/cards.xhtml', bytes: textEncoder.encode(cardsXhtml(cards)) },
+    { name: 'OEBPS/cards.xhtml', bytes: textEncoder.encode(cardsXhtml(cards, title)) },
   ]
 
   const zip = createStoredZip(files)
   const blob = new Blob([zip], { type: 'application/epub+zip' })
-  downloadBlob(blob, `domun_x4_cards_${todayStamp()}.epub`)
+  downloadBlob(blob, `domun_x4_${cleanFilename(label)}_${todayStamp()}.epub`)
 }

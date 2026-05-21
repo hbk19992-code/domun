@@ -324,20 +324,20 @@ export function useCards() {
     a.download = `mnemonic_cards_${new Date().toISOString().slice(0,10)}.json`; a.click();
   }, [allCards]);
 
-  const exportX4TXT = useCallback(() => {
-    if (allCards.length === 0) {
+  const exportX4TXT = useCallback((targetCards = allCards, label = '전체') => {
+    if (targetCards.length === 0) {
       alert('내보낼 카드가 없습니다.');
       return;
     }
-    exportX4Txt(allCards);
+    exportX4Txt(targetCards, label);
   }, [allCards]);
 
-  const exportX4EPUB = useCallback(() => {
-    if (allCards.length === 0) {
+  const exportX4EPUB = useCallback((targetCards = allCards, label = '전체') => {
+    if (targetCards.length === 0) {
       alert('내보낼 카드가 없습니다.');
       return;
     }
-    exportX4Epub(allCards);
+    exportX4Epub(targetCards, label);
   }, [allCards]);
 
   const importJSON = useCallback((file) => new Promise((resolve, reject) => {
