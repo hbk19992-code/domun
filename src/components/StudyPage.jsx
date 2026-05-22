@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react'
 import { isDue, dueLabel } from '../utils/srs'
 import { useTTS, ttsMnemonic, ttsDetail } from '../hooks/useTTS'
 import { useCloudSRS } from '../hooks/useCloudSRS'
+import { answerLabel, cardKindLabel, getCardKind, isAnswerCard } from '../utils/cardType'
 
 const STATUS = {
   unknown: { label: '모름',   emoji: '✗', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
@@ -186,11 +187,12 @@ export default function StudyPage({ cards }) {
     if (!listenMode || !playing || !card) return
     setFlipped(false)
     const isLast = safeIdx >= deck.length - 1
-    const isQA = !card.mnemonic && card.answer != null
-    const segments = isQA
+    const isAnswer = isAnswerCard(card)
+    const label = answerLabel(card)
+    const segments = isAnswer
       ? [
           { text: card.question, pauseAfter: 1400 },
-          { text: '정답', before: () => setFlipped(true), pauseAfter: 400 },
+          { text: label, before: () => setFlipped(true), pauseAfter: 400 },
           { text: ttsDetail(card.answer), pauseAfter: 1600 },
         ]
       : [
@@ -334,7 +336,8 @@ export default function StudyPage({ cards }) {
 function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard, subjects = [], getParts }) {
   const [editOpen, setEditOpen] = useState(false)
   const [draft, setDraft] = useState(card)
-  const isQA = !card.mnemonic && card.answer != null
+  const kind = getCardKind(card)
+  const isAnswer = isAnswerCard(card)
   const canEdit = !!card.id
   const cardKey = card.id ?? card.question
 
@@ -368,11 +371,11 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
     <>
       <div style={S.card(flipped, flipped ? entryOf(card)?.status : null)}
         onClick={() => !editOpen && setFlipped((f) => !f)}>
-        <div style={S.badge}>{card.subject} · {card.part}</div>
+        <div style={S.badge}>{card.subject} · {card.part} · {cardKindLabel(kind)}</div>
         <div style={S.question}>{card.question}</div>
         {flipped ? (
           <>
-            {isQA ? (
+            {isAnswer ? (
               <div style={{ ...S.detail, fontSize: 15, color: '#e2e8f0' }}>{card.answer}</div>
             ) : (
               <>
@@ -416,7 +419,7 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
           <div style={{ color: '#94a3b8', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>카드 편집</div>
           <div style={{ display: 'flex', gap: 6 }}>{inp('subject', '과목')}{inp('part', '단원')}</div>
           {inp('question', '질문')}
-          {isQA ? inp('answer', '답', true) : <>{inp('mnemonic', '두문자')}{inp('detail', '설명', true)}</>}
+          {isAnswer ? inp('answer', answerLabel(kind), true) : <>{inp('mnemonic', '두문자')}{inp('detail', '설명', true)}</>}
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             <button onClick={handleSave} style={{
               flex: 1, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff',

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { answerLabel, answerPlaceholder, cardKindLabel, getCardKind, isAnswerCard } from '../utils/cardType'
 
 const S = {
   section: { background: 'rgba(15,23,42,0.6)', border: '1px solid #1e293b', borderRadius: 16, padding: 20, marginBottom: 16 },
@@ -85,7 +86,7 @@ export default function ManagePage({ cards }) {
   const [newSub, setNewSub] = useState('')
   const [newPart, setNewPart] = useState('')
   const [newQ, setNewQ] = useState('')
-  const [newType, setNewType] = useState('mnemonic') // 'mnemonic' | 'qa'
+  const [newType, setNewType] = useState('mnemonic')
   const [newMnemonic, setNewMnemonic] = useState('')
   const [newDetail, setNewDetail] = useState('')
   const [newAnswer, setNewAnswer] = useState('')
@@ -276,18 +277,19 @@ export default function ManagePage({ cards }) {
       alert('두문자를 입력해 주세요.');
       return;
     }
-    if (newType === 'qa' && !newAnswer.trim()) {
-      alert('정답 내용을 입력해 주세요.');
+    if (newType !== 'mnemonic' && !newAnswer.trim()) {
+      alert(`${answerLabel(newType)}을 입력해 주세요.`);
       return;
     }
 
     const cardData = {
+      cardType: newType,
       subject: newSub.trim(),
       part: newPart.trim(),
       question: newQ.trim(),
       mnemonic: newType === 'mnemonic' ? newMnemonic.trim() : '',
       detail: newType === 'mnemonic' ? newDetail.trim() : '',
-      answer: newType === 'qa' ? newAnswer.trim() : null,
+      answer: newType !== 'mnemonic' ? newAnswer.trim() : null,
     };
 
     await cards.addCard(cardData);
@@ -337,12 +339,16 @@ export default function ManagePage({ cards }) {
           <input style={{...S.input, width: '100%'} } placeholder="질문 내용을 입력하세요" value={newQ} onChange={e => setNewQ(e.target.value)} />
           
           <div style={{ display: 'flex', gap: 10, margin: '4px 0' }}>
-            <label style={{ color: '#e2e8f0', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-              <input type="radio" checked={newType === 'mnemonic'} onChange={() => setNewType('mnemonic')} /> 두문자 플래시카드 형태
-            </label>
-            <label style={{ color: '#e2e8f0', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-              <input type="radio" checked={newType === 'qa'} onChange={() => setNewType('qa')} /> 일반 질문-답변(Q&A) 형태
-            </label>
+            {[
+              ['mnemonic', '두문자'],
+              ['qa', 'Q&A'],
+              ['case', '판례'],
+              ['statute', '조문'],
+            ].map(([type, label]) => (
+              <label key={type} style={{ color: '#e2e8f0', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                <input type="radio" checked={newType === type} onChange={() => setNewType(type)} /> {label}
+              </label>
+            ))}
           </div>
 
           {newType === 'mnemonic' ? (
@@ -351,7 +357,7 @@ export default function ManagePage({ cards }) {
               <textarea style={{...S.input, minHeight: 55, resize: 'vertical'}} placeholder="각 두문자의 상세 설명을 입력하세요 (①이행기 / ②가능...)" value={newDetail} onChange={e => setNewDetail(e.target.value)} />
             </>
           ) : (
-            <textarea style={{...S.input, minHeight: 80, resize: 'vertical'}} placeholder="뒤집었을 때 보일 정답 해설을 입력하세요" value={newAnswer} onChange={e => setNewAnswer(e.target.value)} />
+            <textarea style={{...S.input, minHeight: 80, resize: 'vertical'}} placeholder={answerPlaceholder(newType)} value={newAnswer} onChange={e => setNewAnswer(e.target.value)} />
           )}
 
           <button style={{...S.btn(false), background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', marginTop: 4}} onClick={handleAddCardSubmit}>
@@ -448,9 +454,11 @@ export default function ManagePage({ cards }) {
           ) : (
             filteredUserCards.map(c => {
               const isEditing = editingCardId === c.id;
-              const isQA = !c.mnemonic && c.answer != null;
+              const kind = getCardKind(c);
+              const isAnswer = isAnswerCard(c);
 
               if (isEditing) {
+                const editKind = getCardKind(editCardDraft || c);
                 return (
                   <div key={c.id} style={{ border: '1px solid #6366f1', background: '#0f172a', padding: 12, borderRadius: 10, marginBottom: 8 }}>
                     <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
@@ -458,8 +466,8 @@ export default function ManagePage({ cards }) {
                       <DataListInput id={`edit-part-dl-${c.id}`} value={editCardDraft.part} onChange={e => setEditCardDraft({...editCardDraft, part: e.target.value})} placeholder="단원" style={S.input} options={draftPartOptions} />
                     </div>
                     <input style={{...S.input, width: '100%', marginBottom: 6}} value={editCardDraft.question} onChange={e => setEditCardDraft({...editCardDraft, question: e.target.value})} placeholder="질문" />
-                    {isQA ? (
-                      <textarea style={{...S.input, width: '100%', marginBottom: 6, minHeight: 50, resize: 'vertical'}} value={editCardDraft.answer} onChange={e => setEditCardDraft({...editCardDraft, answer: e.target.value})} placeholder="답변 내용" />
+                    {isAnswer ? (
+                      <textarea style={{...S.input, width: '100%', marginBottom: 6, minHeight: 50, resize: 'vertical'}} value={editCardDraft.answer} onChange={e => setEditCardDraft({...editCardDraft, answer: e.target.value})} placeholder={answerLabel(editKind)} />
                     ) : (
                       <>
                         <input style={{...S.input, width: '100%', marginBottom: 6, color: '#818cf8', fontWeight: 700}} value={editCardDraft.mnemonic} onChange={e => setEditCardDraft({...editCardDraft, mnemonic: e.target.value})} placeholder="두문자" />
@@ -483,11 +491,11 @@ export default function ManagePage({ cards }) {
                     <div style={{ display: 'flex', gap: 5, marginBottom: 4, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 10, background: '#1e293b', color: '#94a3b8', padding: '1px 6px', borderRadius: 4 }}>{c.subject}</span>
                       <span style={{ fontSize: 10, background: '#1e293b', color: '#64748b', padding: '1px 6px', borderRadius: 4 }}>{c.part}</span>
-                      <span style={{ fontSize: 10, background: isQA ? 'rgba(245,158,11,0.15)' : 'rgba(99,102,241,0.15)', color: isQA ? '#f59e0b' : '#818cf8', padding: '1px 6px', borderRadius: 4 }}>{isQA ? 'Q&A' : '두문자'}</span>
+                      <span style={{ fontSize: 10, background: isAnswer ? 'rgba(245,158,11,0.15)' : 'rgba(99,102,241,0.15)', color: isAnswer ? '#f59e0b' : '#818cf8', padding: '1px 6px', borderRadius: 4 }}>{cardKindLabel(kind)}</span>
                     </div>
                     <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.question}</div>
-                    <div style={{ color: isQA ? '#94a3b8' : '#818cf8', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {isQA ? c.answer : `${c.mnemonic} - ${c.detail}`}
+                    <div style={{ color: isAnswer ? '#94a3b8' : '#818cf8', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {isAnswer ? c.answer : `${c.mnemonic} - ${c.detail}`}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>

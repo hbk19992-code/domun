@@ -1,16 +1,71 @@
 import { useState, useRef, useCallback, useMemo, useEffect, useId } from 'react'
 import { isDuplicate, normQuestion } from '../utils/dedup'
+import { answerLabel, cardKindLabel, getCardKind, isAnswerCard } from '../utils/cardType'
 
 function classifyCard(card, allCards) {
-  if (!allCards || !Array.isArray(allCards)) return { type: 'new' };
-  const isDup = allCards.some(c => isDuplicate(c, card));
-  if (isDup) return { type: 'existing' };
+  if (!allCards || !Array.isArray(allCards)) return { type: 'new', match: null }
+  const qNorm = normQuestion(card.question)
+  const match = allCards.find((c) => isDuplicate(c, card) || (qNorm && normQuestion(c.question) === qNorm))
+  if (!match) return { type: 'new', match: null }
 
-  const qNorm = normQuestion(card.question);
-  if (qNorm && allCards.some(c => normQuestion(c.question) === qNorm)) {
-    return { type: 'upgrade' };
+  const newLen = cardContentLength(card)
+  const oldLen = cardContentLength(match)
+  if (newLen > oldLen + 15) return { type: 'upgrade', match }
+  return { type: 'existing', match }
+}
+
+function cardContentLength(card) {
+  const body = isAnswerCard(card) ? card.answer : `${card.mnemonic || ''} ${card.detail || ''}`
+  return String(body || '').trim().length
+}
+
+function withClassification(card, allCards) {
+  const { type, match } = classifyCard(card, allCards)
+  return { ...card, _type: type, _match: match || null }
+}
+
+function stripRuntimeMeta(card) {
+  const { _type, _match, ...rest } = card || {}
+  return rest
+}
+
+function combineText(oldValue, newValue) {
+  const oldText = String(oldValue || '').trim()
+  const newText = String(newValue || '').trim()
+  if (!oldText) return newText
+  if (!newText || oldText.includes(newText)) return oldText
+  if (newText.includes(oldText)) return newText
+  return `${oldText}\n\n[추가]\n${newText}`
+}
+
+function buildMergePatch(existing, candidate, mode) {
+  const kind = getCardKind(candidate)
+  const base = {
+    cardType: kind,
+    subject: candidate.subject || existing.subject || '',
+    part: candidate.part || existing.part || '',
+    question: mode === 'replace' ? (candidate.question || existing.question || '') : (existing.question || candidate.question || ''),
   }
-  return { type: 'new' };
+
+  if (isAnswerCard(candidate)) {
+    return {
+      ...base,
+      mnemonic: '',
+      detail: '',
+      answer: mode === 'replace'
+        ? String(candidate.answer || '').trim()
+        : combineText(existing.answer, candidate.answer),
+    }
+  }
+
+  return {
+    ...base,
+    mnemonic: mode === 'replace' ? (candidate.mnemonic || '') : (candidate.mnemonic || existing.mnemonic || ''),
+    detail: mode === 'replace'
+      ? String(candidate.detail || '').trim()
+      : combineText(existing.detail, candidate.detail),
+    answer: null,
+  }
 }
 
 const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
@@ -234,6 +289,45 @@ PDF: "선의취득 <요건> 동.점.무.유.점.무 [동산/양도인 점유/양
 
 【최종 점검】 출력 전 문서 다시 훑고, 거부 규칙 어긴 카드 제거.`
 
+const CASE_PROMPT = `당신은 한국 법학 시험용 판례 요지 카드 제작 전문가입니다.
+문서에서 판례명, 사건번호, 판시사항, 법리, 결론을 찾아 판례 암기 카드로 정리하세요.
+
+【출력 원칙】
+- 한 카드에는 하나의 판례 또는 하나의 판례 법리만 담습니다.
+- question은 판례명/쟁점이 드러나는 시험 문제 형태로 작성합니다.
+- answer에는 사실관계가 아니라 시험에 필요한 판례 요지와 키워드를 압축합니다.
+- 문서에 없는 판례나 결론을 지어내지 마세요.
+- 판례가 아닌 일반 설명은 출력하지 마세요.
+
+【필드】
+- subject: 과목명
+- part: 단원명 또는 쟁점명
+- question: 예) "대법원 2020다0000 판례의 핵심 법리는?"
+- answer: 판례 요지, 판단기준, 결론
+
+【출력】
+순수 JSON 배열만.
+[{"subject":"","part":"","question":"","answer":""}]`
+
+const STATUTE_PROMPT = `당신은 한국 법학 시험용 조문 암기 카드 제작 전문가입니다.
+문서에서 조문 번호, 요건, 효과, 예외, 기간, 절차를 찾아 조문 카드로 정리하세요.
+
+【출력 원칙】
+- 한 카드에는 하나의 조문 또는 하나의 조문상 요건/효과만 담습니다.
+- question은 조문 번호와 쟁점이 드러나는 시험 문제 형태로 작성합니다.
+- answer에는 조문 내용 또는 암기해야 할 요건·효과·예외를 구조화해 적습니다.
+- 문서에 없는 조문 내용을 지어내지 마세요.
+
+【필드】
+- subject: 과목명
+- part: 단원명 또는 조문 분야
+- question: 예) "민법 제390조 손해배상책임의 요건은?"
+- answer: 조문 내용 또는 시험용 암기 포인트
+
+【출력】
+순수 JSON 배열만.
+[{"subject":"","part":"","question":"","answer":""}]`
+
 // Gemini 규격 전용 REST API 송신 함수 (1회)
 async function callGemini(apiKey, model, parts, systemPrompt, options = {}) {
   const controller = new AbortController()
@@ -430,16 +524,25 @@ function makeChunkPrompt(chunk, index, total, options = {}) {
   const denseGuide = options.dense
     ? `\n더 촘촘히 재추출 모드입니다. 누락 방지 우선으로 작은 단위로 쪼개세요.\n`
     : ''
-  const rules = `\n핵심: (1) 줄바꿈으로 두문자·풀이가 끊어져 있어도 같은 소단원이면 1장의 카드로 묶을 것. (2) part는 가장 가까운 위쪽 대제목【 】에서 점·공백 제거하여 추출. (3) mnemonic·detail 둘 다 채울 수 없는 카드는 출력 금지.\n`
+  const rules = options.extractType === 'case'
+    ? `\n핵심: 판례명·사건번호·쟁점·판시사항을 찾아 question/answer 카드로 만들 것. 판례가 아닌 일반 설명은 출력하지 말 것.\n`
+    : options.extractType === 'statute'
+      ? `\n핵심: 조문 번호·요건·효과·예외·기간·절차를 찾아 question/answer 카드로 만들 것. 조문과 무관한 일반 설명은 출력하지 말 것.\n`
+      : `\n핵심: (1) 줄바꿈으로 두문자·풀이가 끊어져 있어도 같은 소단원이면 1장의 카드로 묶을 것. (2) part는 가장 가까운 위쪽 대제목【 】에서 점·공백 제거하여 추출. (3) mnemonic·detail 둘 다 채울 수 없는 카드는 출력 금지.\n`
+  const target = options.extractType === 'case'
+    ? '판례 요지'
+    : options.extractType === 'statute'
+      ? '조문 암기'
+      : '두문자/Q&A'
   if (total <= 1) {
-    return `다음 텍스트에서 두문자/Q&A 카드를 빠짐없이 추출하세요. 요약 금지.
+    return `다음 텍스트에서 ${target} 카드를 빠짐없이 추출하세요. 요약 금지.
 ${rules}${denseGuide}
 출력은 JSON 배열만.
 
 ${chunk}`
   }
   return `다음은 전체 문서 중 ${index + 1}/${total}번째 조각입니다.
-이 조각의 두문자/핵심 쟁점을 모두 추출하세요. 앞뒤 조각과 겹쳐도 누락 방지 우선.
+이 조각의 ${target} 대상과 핵심 쟁점을 모두 추출하세요. 앞뒤 조각과 겹쳐도 누락 방지 우선.
 ${rules}${denseGuide}
 출력은 JSON 배열만.
 
@@ -474,6 +577,7 @@ function mergeExtractedCards(cards) {
       ...card,
       subject: prev.subject || card.subject || '',
       part: prev.part || card.part || '',
+      cardType: prev.cardType || card.cardType || '',
       question: longerValue(prev.question, card.question),
       mnemonic: longerValue(prev.mnemonic, card.mnemonic),
       detail: longerValue(prev.detail, card.detail),
@@ -528,9 +632,9 @@ function isValidExtractedCard(card, extractType) {
   const question = String(card.question || '').trim()
   if (!question) return false
 
-  if (extractType === 'qa') {
+  if (extractType === 'qa' || extractType === 'case' || extractType === 'statute') {
     const answer = String(card.answer || '').trim()
-    if (answer.length < 2) return false
+    if (answer.length < (extractType === 'qa' ? 2 : 6)) return false
     if (/^[…·.\-\s]+$/.test(answer)) return false
     return true
   }
@@ -586,7 +690,7 @@ async function extractTextWithChunks(apiKey, text, systemPrompt, label, setProgr
     try {
       const raw = await extractWithGemini(
         apiKey,
-        [{ text: makeChunkPrompt(chunks[i], i, chunks.length, { dense: options.dense }) }],
+        [{ text: makeChunkPrompt(chunks[i], i, chunks.length, { dense: options.dense, extractType: options.extractType }) }],
         systemPrompt,
         (msg) => setProgress(`${prefix} · ${msg.replace(/^☁️\s*/, '')}`),
         { maxOutputTokens: chunks.length > 1 ? GEMINI_CHUNK_OUTPUT_TOKENS : GEMINI_MAX_OUTPUT_TOKENS }
@@ -627,6 +731,8 @@ const REVIEW_FILTERS = [
   ['missingCore', '내용 빈칸'],
   ['mnemonic', '두문자'],
   ['qa', 'Q&A'],
+  ['case', '판례'],
+  ['statute', '조문'],
 ]
 
 function isUnclassified(value) {
@@ -636,12 +742,12 @@ function isUnclassified(value) {
 
 function getReviewIssues(card) {
   const issues = []
-  const isQA = !card?.mnemonic && card?.answer != null
+  const isAnswer = isAnswerCard(card)
   if (isUnclassified(card?.subject)) issues.push('과목 확인')
   if (isUnclassified(card?.part)) issues.push('단원 확인')
   if (!String(card?.question || '').trim()) issues.push('질문 없음')
-  if (isQA) {
-    if (!String(card?.answer || '').trim()) issues.push('답 없음')
+  if (isAnswer) {
+    if (!String(card?.answer || '').trim()) issues.push(`${answerLabel(card)} 없음`)
   } else {
     if (!String(card?.mnemonic || '').trim()) issues.push('두문자 없음')
     if (!String(card?.detail || '').trim()) issues.push('설명 없음')
@@ -654,19 +760,30 @@ function matchesReviewFilter(card, filter) {
   if (filter === 'all') return true
   if (filter === 'needsReview') return getReviewIssues(card).length > 0
   if (filter === 'unclassified') return isUnclassified(card?.subject) || isUnclassified(card?.part)
-  if (filter === 'missingCore') return getReviewIssues(card).some((x) => ['질문 없음', '답 없음', '두문자 없음', '설명 없음'].includes(x))
-  if (filter === 'mnemonic') return !!card?.mnemonic
-  if (filter === 'qa') return !card?.mnemonic && card?.answer != null
+  if (filter === 'missingCore') return getReviewIssues(card).some((x) => x.includes('없음'))
+  if (filter === 'mnemonic') return getCardKind(card) === 'mnemonic'
+  if (filter === 'qa') return getCardKind(card) === 'qa'
+  if (filter === 'case') return getCardKind(card) === 'case'
+  if (filter === 'statute') return getCardKind(card) === 'statute'
   return true
 }
 
 function buildPrompt(extractType, dense = false) {
-  const base = extractType === 'qa' ? QA_PROMPT : MNEMONIC_PROMPT
-  return dense ? `${base}${DENSE_PROMPT_SUFFIX}` : base
+  const base =
+    extractType === 'qa' ? QA_PROMPT :
+    extractType === 'case' ? CASE_PROMPT :
+    extractType === 'statute' ? STATUTE_PROMPT :
+    MNEMONIC_PROMPT
+  return dense && extractType === 'mnemonic' ? `${base}${DENSE_PROMPT_SUFFIX}` : base
 }
 
-function buildPdfInstruction(dense = false) {
-  const core = '이 PDF는 한국 법학 두문자 자료입니다. 위에서부터 한 단원씩 순차 처리하며, 대제목【 】은 part 값(점 제거)으로, 점·꺽쇠·+로 분리된 패턴만 mnemonic으로, 줄바꿈으로 끊긴 풀이는 같은 소단원이면 1장의 카드로 묶어 처리하세요. mnemonic·detail 모두 채울 수 있는 카드만 출력합니다.'
+function buildPdfInstruction(extractType, dense = false) {
+  const core =
+    extractType === 'case'
+      ? '이 PDF에서 판례명·사건번호·쟁점·판시사항·결론을 찾아 판례 요지 카드를 만드세요. 판례가 아닌 일반 설명은 출력하지 않습니다.'
+      : extractType === 'statute'
+        ? '이 PDF에서 조문 번호·요건·효과·예외·기간·절차를 찾아 조문 암기 카드를 만드세요. 조문과 직접 관련 없는 일반 설명은 출력하지 않습니다.'
+        : '이 PDF는 한국 법학 두문자 자료입니다. 위에서부터 한 단원씩 순차 처리하며, 대제목【 】은 part 값(점 제거)으로, 점·꺽쇠·+로 분리된 패턴만 mnemonic으로, 줄바꿈으로 끊긴 풀이는 같은 소단원이면 1장의 카드로 묶어 처리하세요. mnemonic·detail 모두 채울 수 있는 카드만 출력합니다.'
   return dense
     ? `더 촘촘히 재추출합니다. ${core} 이미 나온 카드와 겹쳐도 누락 방지가 우선입니다. 출력은 JSON 배열만 반환하세요.`
     : `${core} 출력은 JSON 배열만 반환하세요.`
@@ -798,12 +915,13 @@ function SelectedBatchPanel({ selectedCount, onApply, subjects, getParts }) {
   )
 }
 
-function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getParts }) {
+function CardItem({ card, type, checked, onToggle, onChange, onMergeExisting, subjects = [], getParts }) {
   const uid = useId()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
   const meta = TYPE_META[type] || TYPE_META.new
-  const isQA = !card.mnemonic && card.answer != null
+  const isAnswer = isAnswerCard(card)
+  const match = card._match
   const issues = getReviewIssues(card)
 
   let safeParts = []
@@ -822,8 +940,8 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getP
           <DataListInput id={`ext-part-${uid}`} value={draft.part} onChange={(e) => setDraft({ ...draft, part: e.target.value })} placeholder="단원" style={inputStyle} options={safeParts} />
         </div>
         <input style={inputStyle} value={draft.question || ''} onChange={(e) => setDraft({ ...draft, question: e.target.value })} placeholder="질문" />
-        {isQA ? (
-          <textarea style={{ ...inputStyle, minHeight: 60 }} value={draft.answer || ''} onChange={(e) => setDraft({ ...draft, answer: e.target.value })} placeholder="답" />
+        {isAnswer ? (
+          <textarea style={{ ...inputStyle, minHeight: 60 }} value={draft.answer || ''} onChange={(e) => setDraft({ ...draft, answer: e.target.value })} placeholder={answerLabel(card)} />
         ) : (
           <>
             <input style={{ ...inputStyle, color: '#818cf8', fontWeight: 700 }} value={draft.mnemonic || ''} onChange={(e) => setDraft({ ...draft, mnemonic: e.target.value })} placeholder="두문자" />
@@ -848,13 +966,14 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getP
           <span style={{ fontSize: 10, borderRadius: 4, padding: '2px 7px', fontWeight: 600, background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>{meta.label}</span>
           <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.subject || '미분류'}</span>
           <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.part || '미분류'}</span>
+          <span style={{ background: 'rgba(14,165,233,0.12)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.28)', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{cardKindLabel(card)}</span>
           {issues.slice(0, 3).map((issue) => (
             <span key={issue} style={{ background: 'rgba(245,158,11,0.12)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.35)', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{issue}</span>
           ))}
         </div>
         <div onClick={onToggle} style={{ cursor: 'pointer', wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
           <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
-          {isQA ? (
+          {isAnswer ? (
             <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{card.answer}</div>
           ) : (
             <>
@@ -863,6 +982,29 @@ function CardItem({ card, type, checked, onToggle, onChange, subjects = [], getP
             </>
           )}
         </div>
+        {match && (type === 'upgrade' || type === 'existing') && (
+          <div style={{ marginTop: 10, background: 'rgba(2,6,23,0.45)', border: '1px solid #1e293b', borderRadius: 10, padding: 10 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ color: '#94a3b8', fontSize: 11, fontWeight: 800, marginBottom: 8 }}>기존 카드 비교</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+              <div>
+                <div style={{ color: '#64748b', fontSize: 10, marginBottom: 4 }}>기존</div>
+                <div style={{ color: '#cbd5e1', fontSize: 11, lineHeight: 1.45 }}>{isAnswerCard(match) ? (match.answer || '-') : (match.detail || match.mnemonic || '-')}</div>
+              </div>
+              <div>
+                <div style={{ color: '#64748b', fontSize: 10, marginBottom: 4 }}>추출</div>
+                <div style={{ color: '#e2e8f0', fontSize: 11, lineHeight: 1.45 }}>{isAnswer ? (card.answer || '-') : (card.detail || card.mnemonic || '-')}</div>
+              </div>
+            </div>
+            {match.id ? (
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                <button onClick={() => onMergeExisting?.('append')} style={{ background: 'rgba(245,158,11,0.14)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 7, padding: '6px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 800 }}>기존에 합치기</button>
+                <button onClick={() => onMergeExisting?.('replace')} style={{ background: 'rgba(99,102,241,0.14)', color: '#c4b5fd', border: '1px solid rgba(99,102,241,0.35)', borderRadius: 7, padding: '6px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 800 }}>새 내용으로 교체</button>
+              </div>
+            ) : (
+              <div style={{ color: '#64748b', fontSize: 11, marginTop: 8 }}>기본 내장 카드와 겹쳐 직접 병합할 수 없습니다.</div>
+            )}
+          </div>
+        )}
       </div>
       <button onClick={(e) => { e.stopPropagation(); setDraft(card); setEditing(true) }} style={{ background: 'none', border: 'none', color: '#334155', cursor: 'pointer', fontSize: 14, padding: '2px 4px', flexShrink: 0 }} title="편집">✎</button>
     </div>
@@ -923,8 +1065,7 @@ export default function ExtractPage({ cards, onImport }) {
       const p = c.part || '미분류'
       if (s === oldSubj && p === oldPart) {
         const updated = { ...c, subject: newSubj, part: newPart }
-        updated._type = classifyCard(updated, cards.allCards || []).type
-        return updated
+        return withClassification(updated, cards.allCards || [])
       }
       return c
     }))
@@ -943,8 +1084,7 @@ export default function ExtractPage({ cards, onImport }) {
         subject: nextSubject || card.subject,
         part: nextPart || card.part,
       }
-      updated._type = classifyCard(updated, cards.allCards || []).type
-      return updated
+      return withClassification(updated, cards.allCards || [])
     }))
     setImportMsg(`✓ 선택 카드 ${appliedCount}장 분류를 적용했습니다`)
     setTimeout(() => setImportMsg(''), 2500)
@@ -958,16 +1098,25 @@ export default function ExtractPage({ cards, onImport }) {
 
   const finishExtraction = useCallback((parsed, wasTruncated, options = {}) => {
     if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error(extractType === 'qa' ? '핵심 Q&A 내용을 추출하지 못했습니다.' : '두문자 카드를 추출하지 못했습니다.')
+      throw new Error(extractType === 'mnemonic' ? '두문자 카드를 추출하지 못했습니다.' : `${cardKindLabel(extractType)} 카드를 추출하지 못했습니다.`)
     }
 
     const normalized = parsed
       .filter((c) => c && typeof c === 'object')
-      .map((c) =>
-        extractType === 'qa'
-          ? { subject: c.subject || '', part: c.part || '', question: c.question || '', mnemonic: '', detail: '', answer: c.answer || '' }
-          : { subject: c.subject || '', part: c.part || '', question: c.question || '', mnemonic: c.mnemonic || '', detail: c.detail || '', answer: c.answer || '' }
-      )
+      .map((c) => {
+        if (extractType === 'mnemonic') {
+          return { cardType: 'mnemonic', subject: c.subject || '', part: c.part || '', question: c.question || '', mnemonic: c.mnemonic || '', detail: c.detail || '', answer: c.answer || '' }
+        }
+        return {
+          cardType: extractType,
+          subject: c.subject || '',
+          part: c.part || '',
+          question: c.question || '',
+          mnemonic: '',
+          detail: '',
+          answer: c.answer || c.summary || c.holding || c.text || '',
+        }
+      })
       .map(sanitizeCard)
 
     // 두문자/설명 + 두문자 패턴 검증 — AI가 거부 규칙 어긴 카드 자동 제거
@@ -976,17 +1125,17 @@ export default function ExtractPage({ cards, onImport }) {
     const droppedThisRun = beforeFilter - validated.length
 
     if (validated.length === 0) {
-      throw new Error(extractType === 'qa'
-        ? '추출된 Q&A 카드의 답이 모두 비어 있어 사용할 수 없습니다.'
+      throw new Error(extractType !== 'mnemonic'
+        ? `추출된 ${cardKindLabel(extractType)} 카드의 ${answerLabel(extractType)}이 모두 비어 있어 사용할 수 없습니다.`
         : '추출된 두문자 카드가 모두 부실(설명 없음·구분자 없음·대제목 오인 등)하여 사용할 수 없습니다. 문서의 두문자 형식과 풀이를 확인하고 다시 시도해주세요.')
     }
 
     const mergeBase = Array.isArray(options.mergeBase)
-      ? options.mergeBase.map(({ _type, ...card }) => card)
+      ? options.mergeBase.map(stripRuntimeMeta)
       : []
 
     const classified = mergeExtractedCards([...mergeBase, ...validated])
-      .map((c) => ({ ...c, _type: classifyCard(c, cards.allCards || []).type }))
+      .map((c) => withClassification(c, cards.allCards || []))
 
     setExtracted(classified)
     setSelected(new Set(classified.map((c, i) => i).filter((i) => classified[i]._type !== 'existing')))
@@ -1026,7 +1175,7 @@ export default function ExtractPage({ cards, onImport }) {
       const prompt = buildPrompt(extractType, options.dense)
       if (!geminiKey) throw new Error("Gemini API 키가 필수입니다.")
 
-      const { data: parsed, truncated: wasTruncated } = await extractTextWithChunks(geminiKey, text, prompt, label, setProgress, { dense: options.dense })
+      const { data: parsed, truncated: wasTruncated } = await extractTextWithChunks(geminiKey, text, prompt, label, setProgress, { dense: options.dense, extractType })
       finishExtraction(parsed, wasTruncated, { mergeBase: options.mergeBase })
     } catch (e) {
       setErrorMsg(e.message)
@@ -1060,7 +1209,7 @@ export default function ExtractPage({ cards, onImport }) {
       setLastSource({ kind: 'pdf', label: f.name, file: f })
       const geminiPayload = [
         { inline_data: { mime_type: 'application/pdf', data: base64 } },
-        { text: buildPdfInstruction(false) },
+        { text: buildPdfInstruction(extractType, false) },
       ]
       await runExtraction(geminiPayload, f.name)
     }
@@ -1085,7 +1234,7 @@ export default function ExtractPage({ cards, onImport }) {
       const base64 = await readBase64(lastSource.file)
       await runExtraction([
         { inline_data: { mime_type: 'application/pdf', data: base64 } },
-        { text: buildPdfInstruction(true) },
+        { text: buildPdfInstruction(extractType, true) },
       ], lastSource.label || lastSource.file.name || 'PDF', { dense: true, mergeBase })
     }
   }, [lastSource, extracted, runExtraction, runTextExtraction])
@@ -1093,7 +1242,32 @@ export default function ExtractPage({ cards, onImport }) {
   const toggle = (i) => setSelected((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
 
   const updateCard = (i, updated) => {
-    setExtracted((prev) => { const next = [...prev]; next[i] = { ...updated, _type: classifyCard(updated, cards.allCards || []).type }; return next })
+    setExtracted((prev) => { const next = [...prev]; next[i] = withClassification(updated, cards.allCards || []); return next })
+  }
+
+  const mergeWithExisting = async (i, mode) => {
+    const candidate = extracted[i]
+    if (!candidate) return
+    const match = candidate._match || classifyCard(candidate, cards.allCards || []).match
+    if (!match?.id) {
+      setImportMsg('기본 카드와 겹친 항목은 직접 병합할 수 없습니다. 질문을 조금 바꿔 새 카드로 저장해 주세요.')
+      setTimeout(() => setImportMsg(''), 3500)
+      return
+    }
+
+    const patch = buildMergePatch(match, candidate, mode)
+    await cards.updateCard(match.id, patch)
+    const merged = { ...match, ...patch }
+    setExtracted((prev) => prev.map((card, index) =>
+      index === i ? { ...card, _type: 'existing', _match: merged } : card
+    ))
+    setSelected((prev) => {
+      const next = new Set(prev)
+      next.delete(i)
+      return next
+    })
+    setImportMsg(mode === 'replace' ? '✓ 기존 카드를 새 추출 내용으로 교체했습니다' : '✓ 기존 카드에 새 내용을 합쳤습니다')
+    setTimeout(() => setImportMsg(''), 3000)
   }
 
   const counts = {
@@ -1110,6 +1284,8 @@ export default function ExtractPage({ cards, onImport }) {
     missingCore: extracted.filter((c) => matchesReviewFilter(c, 'missingCore')).length,
     mnemonic: extracted.filter((c) => matchesReviewFilter(c, 'mnemonic')).length,
     qa: extracted.filter((c) => matchesReviewFilter(c, 'qa')).length,
+    case: extracted.filter((c) => matchesReviewFilter(c, 'case')).length,
+    statute: extracted.filter((c) => matchesReviewFilter(c, 'statute')).length,
   }
 
   const visible = extracted
@@ -1131,8 +1307,8 @@ export default function ExtractPage({ cards, onImport }) {
     const extractionBatchId = makeExtractionBatchId()
     const extractedAt = new Date().toISOString()
     const extractionSource = lastSource?.label || file?.name || (inputMode === 'text' ? '텍스트' : 'AI 추출')
-    const toAdd = extracted.filter((c, i) => selected.has(i)).map(({ _type, ...c }) => ({
-      ...c,
+    const toAdd = extracted.filter((c, i) => selected.has(i)).map((c) => ({
+      ...stripRuntimeMeta(c),
       extractionBatchId,
       extractionSource,
       extractedAt,
@@ -1188,6 +1364,8 @@ export default function ExtractPage({ cards, onImport }) {
               {[
                 ['mnemonic', '🔤 두문자 카드', '두문자(약어)를 매핑하여 추출'],
                 ['qa', '💬 질문-답 카드', '주요 쟁점을 Q&A 형태로 추출'],
+                ['case', '⚖ 판례 카드', '판례명·쟁점·요지를 추출'],
+                ['statute', '§ 조문 카드', '조문·요건·효과를 추출'],
               ].map(([type, label, desc]) => (
                 <button key={type} onClick={() => setExtractType(type)} style={{
                   flex: 1, textAlign: 'left', minWidth: 0,
@@ -1309,6 +1487,8 @@ export default function ExtractPage({ cards, onImport }) {
                 ['빈칸', reviewCounts.missingCore, '#ef4444'],
                 ['보강', counts.upgrade, '#f59e0b'],
                 ['이미 보유', counts.existing, '#64748b'],
+                ['판례', reviewCounts.case, '#38bdf8'],
+                ['조문', reviewCounts.statute, '#22c55e'],
               ].map(([label, count, color]) => (
                 <div key={label} style={{ background: 'rgba(10,15,30,0.55)', border: '1px solid #1e293b', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ color, fontSize: 19, fontWeight: 900, lineHeight: 1 }}>{count}</div>
@@ -1352,7 +1532,7 @@ export default function ExtractPage({ cards, onImport }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', overflowX: 'hidden', marginBottom: 14, width: '100%', boxSizing: 'border-box' }}>
             {visible.length === 0 ? <div style={{ color: '#334155', textAlign: 'center', padding: '24px 0', fontSize: 13 }}>조건에 맞는 데이터 카드가 없습니다.</div> : visible.map(({ c, i }) => (
-                <CardItem key={i} card={c} type={c._type} checked={selected.has(i)} onToggle={() => toggle(i)} onChange={(updated) => updateCard(i, updated)} subjects={allSubjects} getParts={getPartsForSubject} />
+                <CardItem key={i} card={c} type={c._type} checked={selected.has(i)} onToggle={() => toggle(i)} onChange={(updated) => updateCard(i, updated)} onMergeExisting={(mode) => mergeWithExisting(i, mode)} subjects={allSubjects} getParts={getPartsForSubject} />
               ))
             }
           </div>

@@ -1,3 +1,5 @@
+import { answerLabel, isAnswerCard } from './cardType'
+
 const textEncoder = new TextEncoder()
 
 function todayStamp() {
@@ -17,14 +19,11 @@ function cleanText(value) {
   return String(value ?? '').replace(/\r\n?/g, '\n').trim()
 }
 
-function isQACard(card) {
-  return !cleanText(card.mnemonic) && cleanText(card.answer)
-}
-
 function normalizeCards(cards) {
   return (Array.isArray(cards) ? cards : [])
     .filter((card) => cleanText(card.question))
     .map((card) => ({
+      cardType: cleanText(card.cardType),
       subject: cleanText(card.subject) || '미분류',
       part: cleanText(card.part) || '기본',
       question: cleanText(card.question),
@@ -72,8 +71,8 @@ function txtForCards(cards, title = '두문자 카드') {
     lines.push(`[${group.subject} / ${group.part}]`, '')
     group.cards.forEach((card, idx) => {
       lines.push(`${idx + 1}. ${card.question}`)
-      if (isQACard(card)) {
-        lines.push(`정답: ${card.answer}`)
+      if (isAnswerCard(card)) {
+        lines.push(`${answerLabel(card)}: ${card.answer}`)
       } else {
         lines.push(`두문자: ${card.mnemonic || '-'}`)
         if (card.detail) lines.push(`풀이: ${card.detail}`)
@@ -106,8 +105,8 @@ function cardsXhtml(cards, title = '두문자 카드') {
   const normalized = normalizeCards(cards)
   const sections = groupCards(normalized).map((group) => {
     const articles = group.cards.map((card, idx) => {
-      const answer = isQACard(card)
-        ? `<div class="answer"><span>정답</span>${paragraphHtml(card.answer)}</div>`
+      const answer = isAnswerCard(card)
+        ? `<div class="answer"><span>${escapeXml(answerLabel(card))}</span>${paragraphHtml(card.answer)}</div>`
         : [
             `<p class="mnemonic"><span>두문자</span>${escapeXml(card.mnemonic || '-')}</p>`,
             card.detail ? `<div class="detail"><span>풀이</span>${paragraphHtml(card.detail)}</div>` : '',
