@@ -45,10 +45,29 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
   )
 }
 
+function formatBatchDate(value) {
+  if (!value) return '날짜 없음'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '날짜 없음'
+  return date.toLocaleString('ko-KR', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function summarizeLabels(values, fallback) {
+  const labels = [...new Set((values || []).filter(Boolean))]
+  if (labels.length === 0) return fallback
+  if (labels.length <= 2) return labels.join(', ')
+  return `${labels.slice(0, 2).join(', ')} 외 ${labels.length - 2}`
+}
+
 export default function ManagePage({ cards }) {
   const {
     allCards, userCards, duplicateCount, isAnonymous, userEmail, loginWithGoogle, handleLogout,
-    exportJSON, exportX4TXT, exportX4EPUB, importJSON, deduplicateSelf, deleteBy, countBy, renameFolder, subjects, parts
+    exportJSON, exportX4TXT, exportX4EPUB, importJSON, deduplicateSelf, deleteBy, countBy, renameFolder, updateCardsByIds, subjects, parts
   } = cards
 
   // ── [상태] 선별 삭제 및 폴더 관리 관련 ──
@@ -58,6 +77,9 @@ export default function ManagePage({ cards }) {
   const [editOldPart, setEditOldPart] = useState('전체')
   const [editNewSub, setEditNewSub] = useState('')
   const [editNewPart, setEditNewPart] = useState('')
+  const [batchId, setBatchId] = useState('')
+  const [batchNewSub, setBatchNewSub] = useState('')
+  const [batchNewPart, setBatchNewPart] = useState('')
 
   // ── [상태] 새 카드 직접 추가 관련 ──
   const [newSub, setNewSub] = useState('')
@@ -115,13 +137,64 @@ export default function ManagePage({ cards }) {
     return `${x4Sub}_${x4Part}`
   }, [x4Sub, x4Part])
 
+  const extractionBatches = useMemo(() => {
+    const timeOf = (value) => {
+      const date = new Date(value || 0)
+      return Number.isNaN(date.getTime()) ? 0 : date.getTime()
+    }
+    const map = new Map()
+    userCards.forEach((card) => {
+      const id = card.extractionBatchId
+      if (!id) return
+      if (!map.has(id)) {
+        map.set(id, {
+          id,
+          count: 0,
+          source: card.extractionSource || 'AI 추출',
+          extractedAt: card.extractedAt || '',
+          subjects: new Set(),
+          parts: new Set(),
+        })
+      }
+      const batch = map.get(id)
+      batch.count += 1
+      if (card.extractionSource && batch.source === 'AI 추출') batch.source = card.extractionSource
+      if (timeOf(card.extractedAt) > timeOf(batch.extractedAt)) batch.extractedAt = card.extractedAt
+      if (card.subject) batch.subjects.add(card.subject)
+      if (card.part) batch.parts.add(card.part)
+    })
+
+    return Array.from(map.values())
+      .map((batch) => ({
+        ...batch,
+        subjects: Array.from(batch.subjects),
+        parts: Array.from(batch.parts),
+      }))
+      .sort((a, b) => timeOf(b.extractedAt) - timeOf(a.extractedAt))
+  }, [userCards])
+
+  const activeBatchId = extractionBatches.some((batch) => batch.id === batchId)
+    ? batchId
+    : (extractionBatches[0]?.id || '')
+  const activeBatch = extractionBatches.find((batch) => batch.id === activeBatchId)
+  const activeBatchCards = useMemo(
+    () => activeBatchId ? userCards.filter((card) => card.extractionBatchId === activeBatchId) : [],
+    [activeBatchId, userCards]
+  )
+
   const targetCount = countBy({ subject: delSub, part: delPart })
   const targetEditCount = countBy({ subject: editOldSub, part: editOldPart })
+  const canBatchRename = activeBatchCards.length > 0 && (!!batchNewSub.trim() || !!batchNewPart.trim())
 
   // 새 카드 추가용 자식 파트 옵션 추출
   const newPartOptions = useMemo(() => parts(newSub), [newSub, parts])
   // 인라인 수정 드래프트용 자식 파트 옵션 추출
   const draftPartOptions = useMemo(() => parts(editCardDraft?.subject || ''), [editCardDraft?.subject])
+  const batchPartOptions = useMemo(() => {
+    const targetSubject = batchNewSub.trim()
+    if (targetSubject) return parts(targetSubject)
+    return [...new Set(activeBatchCards.map((card) => card.part).filter(Boolean))]
+  }, [activeBatchCards, batchNewSub, parts])
 
   // 필터링된 실시간 유저 카드 목록 계산
   const filteredUserCards = useMemo(() => {
@@ -156,21 +229,43 @@ export default function ManagePage({ cards }) {
     }
   }
 
- const handleRename = () => {
-  if (targetEditCount === 0 || (!editNewSub.trim() && !editNewPart.trim())) return
-  if (window.confirm(`[${editOldSub} > ${editOldPart}] 폴더 범위의 카드 ${targetEditCount}개를 일괄 변경하시겠습니까?`)) {
-    renameFolder({
-      oldSubject: editOldSub,
-      oldPart: editOldPart,
-      newSubject: editNewSub.trim(),   // 빈 값이면 renameFolder가 기존 과목명 유지
-      newPart: editNewPart.trim()      // 빈 값이면 renameFolder가 기존 단원명 유지
-    }).then((count) => {
-      alert(`${count}개의 카드가 성공적으로 이동 및 수정되었습니다.`);
-      setEditNewSub('');
-      setEditNewPart('');
-    });
+  const handleRename = () => {
+    if (targetEditCount === 0 || (!editNewSub.trim() && !editNewPart.trim())) return
+    if (window.confirm(`[${editOldSub} > ${editOldPart}] 폴더 범위의 카드 ${targetEditCount}개를 일괄 변경하시겠습니까?`)) {
+      renameFolder({
+        oldSubject: editOldSub,
+        oldPart: editOldPart,
+        newSubject: editNewSub.trim(),   // 빈 값이면 renameFolder가 기존 과목명 유지
+        newPart: editNewPart.trim()      // 빈 값이면 renameFolder가 기존 단원명 유지
+      }).then((count) => {
+        alert(`${count}개의 카드가 성공적으로 이동 및 수정되었습니다.`);
+        setEditNewSub('');
+        setEditNewPart('');
+      });
+    }
   }
-}
+
+  const handleBatchRename = () => {
+    const nextSubject = batchNewSub.trim()
+    const nextPart = batchNewPart.trim()
+    if (!activeBatchCards.length || (!nextSubject && !nextPart)) return
+
+    const patch = {}
+    if (nextSubject) patch.subject = nextSubject
+    if (nextPart) patch.part = nextPart
+
+    const preview = activeBatchCards.slice(0, 3)
+      .map((card) => `- ${card.subject || '미분류'} > ${card.part || '미분류'}: ${card.question || '질문 없음'}`)
+      .join('\n')
+
+    if (window.confirm(`[${activeBatch?.source || 'AI 추출'}] 묶음의 카드 ${activeBatchCards.length}개를 일괄 변경하시겠습니까?\n\n${preview}`)) {
+      updateCardsByIds(activeBatchCards.map((card) => card.id), patch).then((count) => {
+        alert(`${count}개의 최근 추출 카드가 성공적으로 수정되었습니다.`)
+        setBatchNewSub('')
+        setBatchNewPart('')
+      })
+    }
+  }
 
   const handleAddCardSubmit = async () => {
     if (!newSub.trim() || !newPart.trim() || !newQ.trim()) {
@@ -263,6 +358,42 @@ export default function ManagePage({ cards }) {
             ✨ 새 카드 생성 및 저장
           </button>
         </div>
+      </div>
+
+      {/* 최근 AI 추출 묶음 정리 섹션 */}
+      <div style={S.section}>
+        <div style={S.title}>최근 AI 추출 묶음 정리</div>
+        <div style={S.sub}>AI 추출 화면에서 저장한 카드 묶음만 골라 과목과 단원을 한 번에 다시 맞춥니다.</div>
+        {extractionBatches.length === 0 ? (
+          <div style={{ color: '#475569', fontSize: 13, background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 10, padding: 12 }}>
+            아직 저장된 AI 추출 묶음이 없습니다. 추출 결과를 내 카드 서재에 추가하면 여기에 표시됩니다.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
+            <select style={{ ...S.select, width: '100%' }} value={activeBatchId} onChange={(e) => setBatchId(e.target.value)}>
+              {extractionBatches.map((batch) => (
+                <option key={batch.id} value={batch.id}>
+                  {formatBatchDate(batch.extractedAt)} · {batch.source} · {batch.count}장
+                </option>
+              ))}
+            </select>
+            <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.55 }}>
+              현재 분류: {summarizeLabels(activeBatch?.subjects, '과목 없음')} / {summarizeLabels(activeBatch?.parts, '단원 없음')} · 대상 {activeBatchCards.length}개
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ color: '#818cf8', fontSize: 12, width: 45, fontWeight: 700 }}>변경 후</span>
+              <DataListInput id="batch-sub-dl" value={batchNewSub} onChange={e => setBatchNewSub(e.target.value)} placeholder="새 과목명 (공백 시 유지)" style={S.input} options={subjects} />
+              <DataListInput id="batch-part-dl" value={batchNewPart} onChange={e => setBatchNewPart(e.target.value)} placeholder="새 단원명 (공백 시 유지)" style={S.input} options={batchPartOptions} />
+            </div>
+            <button
+              style={{ ...S.btn(false), background: canBatchRename ? 'rgba(14,165,233,0.16)' : '#1e293b', color: canBatchRename ? '#7dd3fc' : '#64748b', border: canBatchRename ? '1px solid rgba(14,165,233,0.45)' : '1px solid #334155' }}
+              disabled={!canBatchRename}
+              onClick={handleBatchRename}
+            >
+              최근 추출 카드 {activeBatchCards.length}개 일괄 변경
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 📁 폴더(과목/단원) 이름 일괄 변경 섹션 */}

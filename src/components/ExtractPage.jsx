@@ -24,59 +24,215 @@ const GEMINI_TIMEOUT_MS = 180000
 const GEMINI_MAX_OUTPUT_TOKENS = 50000
 const GEMINI_CHUNK_OUTPUT_TOKENS = 24000
 
-const DENSE_PROMPT_SUFFIX = `\n\n【더 촘촘히 재추출 모드】\n- 이미 뽑힌 카드와 겹치더라도 누락 가능성이 있으면 다시 추출한다.\n- 큰 단락 하나를 카드 하나로 요약하지 말고, 요건·효과·예외·판례·정의·비교 포인트를 가능한 한 작은 단위로 쪼갠다.\n- 두문자 주변의 괄호, 표, 번호, 조문, 판례명, 예외 문구를 놓치지 않는다.\n- 불완전해 보이는 항목도 사용자가 검수할 수 있도록 카드 후보로 남긴다.`
+function makeExtractionBatchId() {
+  return `extract_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+}
 
-const MNEMONIC_PROMPT = `당신은 법학 시험 두문자(두문자어) 카드를 빠짐없이 추출하는 전문가입니다.
+const DENSE_PROMPT_SUFFIX = `\n\n【더 촘촘히 재추출 모드】\n- 이미 뽑힌 카드와 겹치더라도 누락 가능성 있으면 다시 추출.\n- 큰 단락 하나를 카드 하나로 요약하지 말고, 요건/효과/예외/판례/정의/비교 포인트를 가능한 한 작은 단위로 쪼갠다.\n- 두문자 주변 괄호·표·번호·조문·판례명·예외 문구를 놓치지 않는다.\n- 거부 규칙은 그대로 유지: mnemonic·detail 둘 다 명확히 작성된 카드만 출력. 줄바꿈으로 끊긴 풀이도 같은 단원이면 합쳐서 1장으로 작성.\n- 풀이를 정확히 모르는 글자가 하나라도 있으면 그 카드는 통째로 버려라.`
 
-【절대 규칙】
-- 문서에 실제로 있는 두문자는 단 하나도 놓치지 말 것.
-- 확신이 조금 부족해도 패턴에 해당하면 일단 추출할 것. 나중에 사용자가 판단한다.
-- 단, 문서에 없는 두문자나 의미를 지어내지 말 것.
-- 요약하지 말고, 카드 수를 줄이지 말고, 반복되는 형식의 항목도 각각 별도 카드로 뽑을 것.
+const MNEMONIC_PROMPT = `당신은 한국 법학 시험용 두문자(약어) 카드 추출 전문가입니다.
+시험 자료(특히 변호사시험·로스쿨 두문자집)의 계층 구조를 이해하고, 풀이가 명확한 두문자만 카드로 만듭니다.
 
-【두문자 인식 기준 — 아래 패턴 중 하나라도 해당하면 추출】
-1. 점(.) 구분형: "이.가.게.귀.위", "보.필.불.대", "동.매.철"
-2. 괄호 설명형: "준.통.수 [준비완료·통지·수령]"
-3. 한글 약어 나열: "모.사.실", "강.손.해.책", "변.대.공"
-4. 꺽쇠 요건/효과: "<요건>이.가.게.귀.위 <효과>강.손.해.책" → 각각 별도 카드로
-5. 비고 설명형: "[의무위반/상당인과관계/손해범위]" 앞에 두문자가 있으면 추출
-6. 조항 번호와 결합: "392조 강.손.해.책", "451조 동.기"
-7. 단어 축약형: "출.구.정", "항.전", "적.기.해"
-8. 영어·숫자 포함: "파.판.5.도", "소.객.도 안.지"
-9. 한자 포함: "생.원.유", "묘.지.명.철.귀.무.기.침"
-10. 특수 표기: "저+건.동.경", "3아.미안.신변"
+【문서 구조 인식 — 가장 먼저 파악】
+한국 법학 두문자 자료는 다음 4단 계층입니다:
 
-【추출 방법】
-- 문서를 처음부터 끝까지 한 줄씩 읽으며 위 패턴을 전부 탐색한다.
-- 두문자 발견 시 앞뒤 문맥으로 question(이 두문자가 답이 되는 질문)을 만든다.
-- 같은 주제에 요건/효과/판례/예외가 따로 있으면 카드도 따로 만든다.
-- detail에는 두문자의 각 글자가 무엇의 약자인지 문서 표현을 최대한 보존해 적는다.
-- 같은 단락에 두문자가 여러 개 있으면 각각 별도 카드로 분리한다.
-- 분량이 많아도 생략하지 말고 가능한 모든 카드를 출력한다.
+(1) 대제목 = 【 채·권·총·론 】, 【 채·권·각·론 】, 【 민·법·총·칙 】, 【 물·권·법 】, 【 형·법·총·론 】 등
+    → 점이 들어있어도 절대 두문자 아님. part 필드 값으로 사용 (점·공백 제거)
+       【 채·권·총·론 】 → "채권총론"
+       【 민·법·총·칙 】 → "민법총칙"
 
-【과목·단원 분류】
-- subject: 법 과목명. 예: 민법, 형법, 헌법, 행정법, 민사소송법, 상법
-- part: 장·절·주제 단위. 예: 채권총론, 물권법, 법률행위, 소송요건
-- 문서 제목·목차·소제목이 있으면 그 구조를 그대로 사용한다.
-- 판단이 어려우면 빈 문자열 대신 "미분류"로 둔다.
+(2) 단원번호 = "01. 채권의 목적", "02. 채무불이행", "13. 소멸시효" 등
+    → 두문자 아님. question의 맥락(주제)으로만 사용
 
-【출력 형식 — 순수 JSON 배열만】
-[{"subject":"과목명","part":"단원명","question":"질문","mnemonic":"두문자","detail":"① 의미1 / ② 의미2 ..."}]
+(3) 소단원 = "-이행지체", "-대상청구권", "-관습법 법정지상권" 등 (대시로 시작)
+    → 두문자 아님. question의 직접 주제로 사용
 
-최종 점검: 출력 전 문서를 다시 훑어 누락된 두문자가 없는지 확인하라.`
+(4) 두문자 본체 = 점·꺽쇠·+·괄호로 명시 분리된 짧은 음절/숫자열
+    예) "이.가.게.귀.위", "준.통.수", "동.매.철", "강.손.해.책",
+        "<요건>이.가.게.귀.위 <효과>강.손.해.책",
+        "급.후.대.상.(반)", "저+건.동.경", "3아.미안.신변", "파.판.5.도"
+    → mnemonic 필드
 
-const QA_PROMPT = `당신은 법학 시험 학습 카드를 만드는 전문가입니다.
-질문-답 형태의 학습 카드를 순수 JSON 배열로만 추출하세요.
+(5) 풀이 = [...] 안 또는 다음 줄에 옮겨진 설명
+    예) "[이행기/이행 가능함에도/이행 게을리/귀책사유/위법성]"
+        "[강제이행, 손해배상, 해제, 책임가중(392조)]"
+    → detail 필드
 
-【절대 규칙】
-- 시험에 나올 핵심 개념·요건·효과·판례·정의·예외를 빠짐없이 카드화할 것.
-- 요약본 몇 개만 만들지 말고, 한 카드에는 하나의 개념만 담아 많이 만들 것.
-- 문서에 없는 내용을 지어내지 말 것.
+【두문자 판별 — 엄격】
+다음 형태만 두문자로 인정:
+✓ 점 구분 (2~10음절): "이.가.게.귀.위", "동.매.철", "준.통.수"
+✓ 꺽쇠 분리: "<요건>X.Y.Z" 또는 "<효과>X.Y.Z" → 꺽쇠 단위로 각각 별도 카드
+✓ 조항 결합: "392조 강.손.해.책" (조항은 question 쪽으로 옮기고 mnemonic은 점 부분만)
+✓ 영문·숫자 혼합: "파.판.5.도", "소.객.도 안.지"
+✓ 특수 부호: "저+건.동.경", "급.후.대.상.(반)"
+✓ 한자·외래어 혼합: "묘.지.명.철.귀.무.기.침"
 
-【출력 형식 — 순수 JSON 배열만】
-[{"subject":"과목명","part":"파트명","question":"질문","answer":"답"}]
+다음은 두문자 아님 — 카드로 만들지 말 것:
+✗ 대제목 【 】 안의 점이 있는 단원명 — part로 갈 것
+✗ 일반 단어 ("채무불이행", "이행지체", "대상청구권") — question의 주제
+✗ 조항 번호 ("391조", "(390조)", "1064조") — 보조 정보
+✗ 화살표·기호 ("→", "ㄱ->ㅅ : ㄱㄴㄷ순서", "ex.", "cf.")
+✗ 본 자료에 풀이가 없거나 추측해야 하는 패턴
+✗ 그저 짧은 문구일 뿐 분리 구분자(점/꺽쇠/+)가 없는 것
 
-최종 점검: 출력 전 문서를 다시 훑어 누락된 핵심 내용이 없는지 확인하라.`
+【줄바꿈 처리 — 매우 중요】
+PDF는 한 줄에 안 들어가면 자동 줄바꿈됩니다. 두문자와 그 풀이가 떨어져 있어도 같은 소단원으로 묶어 1장의 카드로 처리하세요.
+
+원본 PDF 예시 (실제로는 4~5줄에 걸쳐 표시될 수 있음):
+  -이행지체
+   <요건>이.가.게.귀.위
+   [이행기/이행 가능함에도/이행 게을리/
+    귀책사유/위법성]
+   <효과>강.손.해.책
+   [강제이행, 손해배상(원칙 지연배상.
+    예외적 전보배상), 해제, 책임가중(392조)]
+
+→ 이걸 4~5장이 아니라 2장으로 묶어 출력:
+   1장) 이행지체 요건 → mnemonic "이.가.게.귀.위"
+   2장) 이행지체 효과 → mnemonic "강.손.해.책"
+
+【과목·단원 처리】
+- subject = 문서 전반의 법 과목. 대제목 보고 추정:
+  · 【채권총론】【채권각론】【민법총칙】【물권법】【친족상속법】 등 → "민법"
+  · 【총론】【각론】범죄·구성요건 보이면 → "형법"
+  · 국가·국민·기본권 → "헌법"
+  · 행정처분·행정행위 → "행정법"
+  · 소송요건·관할·당사자 → "민사소송법" 또는 "형사소송법"
+- part = 가장 가까운 위쪽 대제목【 】 (점·공백 제거)
+  · 본 자료가 14페이지면, 각 카드가 어느 대제목 아래 있는지 끝까지 추적
+  · 새 대제목 등장 시 즉시 part 값 갱신
+
+【카드 거부 규칙 — 절대 준수】
+1. mnemonic이 비었거나, 점·꺽쇠·+ 같은 구분자 없으면 카드 출력 금지
+2. detail이 비었거나 4글자 미만이거나 단순 키워드 1개면 출력 금지
+3. mnemonic 음절 수 ≠ detail 항목 수면 통째로 버려라 (예: 5글자 두문자에 풀이 3개만 있으면 X)
+4. "..." "기타" "등" "(불명)" 같은 회피 표현 금지
+5. 일반 단어·조항번호·대제목을 mnemonic으로 출력 금지
+
+이 규칙 어긴 카드는 시스템이 자동 제거합니다.
+
+【출력 필드】
+▶ subject = 추정한 법 과목명 (예: "민법")
+▶ part = 가장 가까운 대제목 (점 제거, 예: "채권총론")
+▶ question = 이 두문자가 답이 되는 시험 문제
+   - 소단원명 + 요건/효과/방법 등 키워드 활용
+   ✓ "이행지체의 성립요건은?"
+   ✓ "이행지체의 효과는?"
+   ✓ "관습법상 법정지상권의 요건은?"
+   ✓ "대상청구권의 요건은?"
+   ✗ "이행지체" (단어만)
+▶ mnemonic = 점·꺽쇠·+·괄호 그대로 보존
+▶ detail = "① 풀이1 / ② 풀이2 / ③ 풀이3 ..." 형식, 글자 수와 항목 수 일치
+
+【모범 예시 — 본 자료 패턴 기준】
+
+예시1) PDF:
+  【 채·권·총·론 】
+  01. 채권의 목적
+  -추심채무: 준.통.수
+   [목적물 분리, 변제준비 완료 통지하고 수령 최고]
+출력:
+{"subject":"민법","part":"채권총론","question":"추심채무의 변제제공 방법(구두제공)은?","mnemonic":"준.통.수","detail":"① 목적물 분리 / ② 변제준비 완료 통지 / ③ 수령 최고"}
+
+예시2) PDF (요건·효과 분리):
+  -이행지체
+   <요건>이.가.게.귀.위
+   [이행기/이행 가능함에도/이행 게을리/귀책사유/위법성]
+   <효과>강.손.해.책
+   [강제이행, 손해배상(원칙 지연배상. 예외적 전보배상), 해제, 책임가중(392조)]
+출력 2장:
+{"subject":"민법","part":"채권총론","question":"이행지체의 성립요건은?","mnemonic":"이.가.게.귀.위","detail":"① 이행기 도래 / ② 이행 가능함에도 / ③ 이행을 게을리할 것 / ④ 귀책사유 / ⑤ 위법성"}
+{"subject":"민법","part":"채권총론","question":"이행지체의 효과는?","mnemonic":"강.손.해.책","detail":"① 강제이행 / ② 손해배상(원칙 지연배상, 예외적 전보배상) / ③ 해제 / ④ 책임가중(392조)"}
+
+예시3) PDF (특수문자 mnemonic):
+  -대상청구권: 급.후.대.상.(반)
+   [급부의무/후발적불능/대상취득/상당인과관계/(교환계약은 반대급부 이행가능할 것 요구)]
+출력:
+{"subject":"민법","part":"채권총론","question":"대상청구권의 요건은?","mnemonic":"급.후.대.상.(반)","detail":"① 급부의무 / ② 후발적불능 / ③ 대상취득 / ④ 상당인과관계 / ⑤ (교환계약은 반대급부 이행가능할 것 요구)"}
+
+예시4) PDF (부호+점 혼합):
+  【 물·권·법 】
+  09. 지상권
+  -366조 법정지상권 <요건> 저+건.동.경
+   [저당권설정 당시 토지 위 건물 존재 / 저당권설정 당시 토지·건물 동일인 소유 / 경매로 토지·건물 소유자 달라질 것]
+출력:
+{"subject":"민법","part":"물권법","question":"366조 법정지상권의 요건은?","mnemonic":"저+건.동.경","detail":"① 저당권설정 당시 토지 위 건물 존재 / ② 저당권설정 당시 토지·건물 동일인 소유 / ③ 경매로 토지·건물 소유자 달라질 것 / ④ (이하 생략 시 카드 폐기)"}
+※ 단, 글자 수와 항목 수가 일치하지 않으면 카드 통째로 폐기 — 위 예시는 "저"가 별도 글자가 아니라 조건 접두라면 detail은 3개여야 하므로, 본문 표기를 신중히 확인하라.
+
+예시5) PDF (조항 결합):
+  -채권자대위권 보전의 필요성: 밀.현.간
+   [피보전채권과 피대위권리 밀접한 관련 / 피보전 현실적 이행 유효·적절 확보에 대위행사 필요 / 채무자 재산관리 자유 부당한 간섭 없는 한]
+출력:
+{"subject":"민법","part":"채권총론","question":"채권자대위권의 보전 필요성 판단기준은?","mnemonic":"밀.현.간","detail":"① 피보전채권과 피대위권리의 밀접한 관련 / ② 피보전 현실적 이행 유효·적절 확보에 대위행사 필요 / ③ 채무자 재산관리 자유에 부당한 간섭 없는 한"}
+
+【금지 예시 — 절대 출력 금지】
+✗ {"part":"채·권·총·론",...}  ← part는 점 제거 필요. "채권총론"으로
+✗ {"mnemonic":"채·권·총·론",...}  ← 대제목이지 두문자 아님
+✗ {"mnemonic":"이행지체",...}  ← 일반 단어
+✗ {"mnemonic":"391조",...}  ← 조항번호
+✗ {"mnemonic":"이.가.게.귀.위","detail":""}  ← detail 비어있음
+✗ {"mnemonic":"준.통.수","detail":"통지"}  ← 단일 키워드, 항목 불일치
+✗ {"mnemonic":"이.가.게.귀.위","detail":"① 이행기 / ② 가능 / ③ ... / ④ ... / ⑤ ..."}  ← 회피 표현
+✗ {"question":"채권총론",...}  ← question은 시험문제 형태
+
+【추출 절차】
+1. 문서를 위에서부터 한 단원씩 순차 처리.
+2. 새 대제목 【 】 만나면 part 값 갱신.
+3. 각 소단원(-로 시작)에서 점·꺽쇠 분리된 두문자만 골라낸다.
+4. 두문자 옆 또는 다음 줄의 [풀이]를 detail로 변환.
+5. 풀이가 없거나 모호하면 카드 폐기.
+6. 같은 소단원에 <요건>·<효과> 등 여러 두문자가 있으면 각각 별도 카드.
+
+【출력 형식】
+순수 JSON 배열만. 코드블록·서문·말꼬리 일절 금지.
+[{"subject":"","part":"","question":"","mnemonic":"","detail":""}, ...]
+
+【최종 점검】
+출력 직전 모든 카드에 대해:
+1. mnemonic에 점/꺽쇠/+ 등 구분자 있는가? (없으면 폐기)
+2. detail 항목 수가 mnemonic 음절 수와 일치하는가? (불일치면 폐기)
+3. part에 【】나 가운뎃점이 남아있는가? (있으면 제거)
+4. question이 시험문제 형태인가? (단어만이면 보강)
+5. 같은 단원 내 누락된 두문자가 있는가? (있으면 추가)`
+
+const QA_PROMPT = `당신은 한국 법학 시험 학습 카드 제작 전문가입니다.
+시험에 나올 핵심 개념·요건·효과·판례·정의·예외를 Q&A 카드로 빠짐없이 추출하세요.
+
+【문서 구조】
+- 대제목 【 】 → part로 사용 (점·공백 제거. 예: 【채·권·총·론】→ "채권총론")
+- 단원번호("01.","02." 등) → question 맥락으로만
+- 소단원(-) → question 주제로
+
+【카드 거부 규칙 — 절대 준수】
+- question·answer 중 하나라도 비었거나 부실하면 출력 금지.
+- answer가 단어 1개만 있는 경우 부실. 버려라.
+- "..." "기타" "등" 회피 표현 금지.
+- 대제목 자체를 question으로 출력 금지.
+
+【원칙】
+- 한 카드에 한 개념만. 묶어서 요약 금지.
+- 문서에 없는 내용 지어내지 말 것.
+- 카드가 많아도 좋음. 누락이 가장 큰 죄.
+- 줄바꿈으로 끊긴 풀이도 같은 단원이면 1장으로 합쳐 작성.
+
+【작성 규칙】
+▶ subject = 문서 전반 과목 (예: "민법")
+▶ part = 가장 가까운 대제목 (점 제거, 예: "채권총론")
+▶ question = 시험 문제처럼 구체적으로
+   ✓ "민법 제390조 채무불이행에 따른 손해배상의 요건은?"
+   ✗ "채무불이행이란?"
+▶ answer — 문서 표현 살려서. 번호·구조 보존
+   "① ... / ② ... / ③ ..." 또는 "요건: ... / 효과: ..."
+
+【예시】
+PDF: "선의취득 <요건> 동.점.무.유.점.무 [동산/양도인 점유/양도인 무권리자/유효한 거래행위로 평온공연하게 양수/양수인 점유/선의 무과실 점유]"
+출력:
+{"subject":"민법","part":"물권법","question":"동산 선의취득의 요건은?","answer":"① 동산 / ② 양도인 점유 / ③ 양도인 무권리자 / ④ 유효한 거래행위로 평온공연하게 양수 / ⑤ 양수인 점유 / ⑥ 선의·무과실 점유"}
+
+【출력】순수 JSON 배열만.
+[{"subject":"","part":"","question":"","answer":""}]
+
+【최종 점검】 출력 전 문서 다시 훑고, 거부 규칙 어긴 카드 제거.`
 
 // Gemini 규격 전용 REST API 송신 함수 (1회)
 async function callGemini(apiKey, model, parts, systemPrompt, options = {}) {
@@ -272,22 +428,20 @@ function splitTextIntoChunks(text, options = {}) {
 
 function makeChunkPrompt(chunk, index, total, options = {}) {
   const denseGuide = options.dense
-    ? `\n더 촘촘히 재추출 모드입니다. 이미 추출된 카드 수가 적다고 가정하고, 표·괄호·번호·판례·예외 문구까지 더 작은 단위로 쪼개세요.\n`
+    ? `\n더 촘촘히 재추출 모드입니다. 누락 방지 우선으로 작은 단위로 쪼개세요.\n`
     : ''
+  const rules = `\n핵심: (1) 줄바꿈으로 두문자·풀이가 끊어져 있어도 같은 소단원이면 1장의 카드로 묶을 것. (2) part는 가장 가까운 위쪽 대제목【 】에서 점·공백 제거하여 추출. (3) mnemonic·detail 둘 다 채울 수 없는 카드는 출력 금지.\n`
   if (total <= 1) {
-    return `다음 텍스트에서 카드를 최대한 많이, 빠짐없이 추출해주세요.
-요약하지 말고 두문자/핵심 쟁점이 보이면 각각 별도 카드로 만드세요.
-${denseGuide}
-출력은 JSON 배열만 반환하세요.
+    return `다음 텍스트에서 두문자/Q&A 카드를 빠짐없이 추출하세요. 요약 금지.
+${rules}${denseGuide}
+출력은 JSON 배열만.
 
 ${chunk}`
   }
   return `다음은 전체 문서 중 ${index + 1}/${total}번째 조각입니다.
-이 조각에 있는 두문자/핵심 쟁점을 최대한 많이 추출하세요.
-요약하지 말고, 작은 항목도 카드로 분리하세요.
-앞뒤 조각과 일부 문맥이 겹칠 수 있으니 완전 동일한 중복만 줄이되, 누락 방지를 더 우선하세요.
-${denseGuide}
-출력은 JSON 배열만 반환하세요.
+이 조각의 두문자/핵심 쟁점을 모두 추출하세요. 앞뒤 조각과 겹쳐도 누락 방지 우선.
+${rules}${denseGuide}
+출력은 JSON 배열만.
 
 ${chunk}`
 }
@@ -327,6 +481,93 @@ function mergeExtractedCards(cards) {
     })
   })
   return Array.from(map.values())
+}
+
+// 후처리: AI가 가끔 part 필드에 "채·권·총·론"처럼 가운뎃점/공백/괄호를 그대로 넣음 → 정리
+function cleanPartLabel(value) {
+  if (!value) return ''
+  let s = String(value).trim()
+  // 【 】 제거
+  s = s.replace(/[【】]/g, '')
+  // 가운뎃점·점·공백 제거 ("채·권·총·론" → "채권총론")
+  s = s.replace(/[·.\s]+/g, '')
+  return s
+}
+
+function cleanSubjectLabel(value) {
+  if (!value) return ''
+  return String(value).trim().replace(/[【】·.\s]+/g, '')
+}
+
+// 두문자 판별: 점/꺽쇠/+ 같은 명시적 구분자가 있어야 진짜 두문자
+function looksLikeMnemonic(text) {
+  const s = String(text || '').trim()
+  if (!s) return false
+  // 점 구분자 (예: 이.가.게.귀.위, 동.기)
+  if (/[가-힣A-Za-z0-9가-힣]\s*[.·]\s*[가-힣A-Za-z0-9가-힣]/.test(s)) return true
+  // 꺽쇠 분리 (예: <요건>X.Y.Z)
+  if (/<[^>]+>/.test(s)) return true
+  // + 부호 (예: 저+건.동.경)
+  if (/[가-힣A-Za-z0-9]\+[가-힣A-Za-z0-9]/.test(s)) return true
+  return false
+}
+
+// 대제목/일반 단어를 mnemonic으로 잘못 넣은 경우 거부
+function looksLikeSectionHeading(text) {
+  const s = String(text || '').trim()
+  if (/[【】]/.test(s)) return true
+  // "채·권·총·론" 형태 (3글자 이상이 모두 가운뎃점으로만 연결)
+  if (/^([가-힣]\s*·\s*){2,}[가-힣]$/.test(s)) return true
+  return false
+}
+
+// 두문자/설명 필수 검증 — AI가 거부 규칙을 어기고 보낸 부실 카드 자동 제거
+function isValidExtractedCard(card, extractType) {
+  if (!card || typeof card !== 'object') return false
+
+  const question = String(card.question || '').trim()
+  if (!question) return false
+
+  if (extractType === 'qa') {
+    const answer = String(card.answer || '').trim()
+    if (answer.length < 2) return false
+    if (/^[…·.\-\s]+$/.test(answer)) return false
+    return true
+  }
+
+  // 두문자 모드: mnemonic·detail 둘 다 + 진짜 두문자 형태 검증
+  const mnem = String(card.mnemonic || '').trim()
+  const detail = String(card.detail || '').trim()
+
+  if (!mnem) return false
+  if (!detail) return false
+
+  // 명시적 구분자가 없으면 두문자 아님 → 거부
+  if (!looksLikeMnemonic(mnem)) return false
+
+  // 대제목·section 헤딩이 mnemonic으로 들어온 경우 거부
+  if (looksLikeSectionHeading(mnem)) return false
+
+  // mnemonic이 너무 길면 일반 문장일 가능성
+  if (mnem.length > 60) return false
+
+  // detail 부실 검증
+  if (/^[…·.\-\s]+$/.test(detail)) return false
+  if (detail.length < 4) return false
+  if (/(\.\.\.\s*\/?\s*){2,}/.test(detail)) return false
+  if (/^(기타|등|불명|생략)$/.test(detail)) return false
+
+  return true
+}
+
+// 카드 정리: part·subject 라벨 자동 정돈
+function sanitizeCard(card) {
+  if (!card || typeof card !== 'object') return card
+  return {
+    ...card,
+    subject: cleanSubjectLabel(card.subject),
+    part: cleanPartLabel(card.part),
+  }
 }
 
 async function extractTextWithChunks(apiKey, text, systemPrompt, label, setProgress, options = {}) {
@@ -425,9 +666,10 @@ function buildPrompt(extractType, dense = false) {
 }
 
 function buildPdfInstruction(dense = false) {
+  const core = '이 PDF는 한국 법학 두문자 자료입니다. 위에서부터 한 단원씩 순차 처리하며, 대제목【 】은 part 값(점 제거)으로, 점·꺽쇠·+로 분리된 패턴만 mnemonic으로, 줄바꿈으로 끊긴 풀이는 같은 소단원이면 1장의 카드로 묶어 처리하세요. mnemonic·detail 모두 채울 수 있는 카드만 출력합니다.'
   return dense
-    ? '더 촘촘히 재추출합니다. 이 PDF를 처음부터 끝까지 다시 훑고, 요건·효과·예외·판례·조문·표·괄호 설명·두문자를 작은 단위로 최대한 많이 카드화하세요. 이미 나온 카드와 겹쳐도 누락 방지가 우선입니다. 출력은 JSON 배열만 반환하세요.'
-    : '이 문서의 모든 내용을 처음부터 끝까지 훑어 카드를 최대한 많이, 빠짐없이 추출해주세요. 요약하지 말고 두문자/핵심 쟁점이 보이면 각각 별도 카드로 만드세요. 출력은 JSON 배열만 반환하세요.'
+    ? `더 촘촘히 재추출합니다. ${core} 이미 나온 카드와 겹쳐도 누락 방지가 우선입니다. 출력은 JSON 배열만 반환하세요.`
+    : `${core} 출력은 JSON 배열만 반환하세요.`
 }
 
 function DataListInput({ id, value, onChange, placeholder, style, options }) {
@@ -505,6 +747,53 @@ function GroupEditorPanel({ extracted, onUpdateGroup, subjects, getParts }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function SelectedBatchPanel({ selectedCount, onApply, subjects, getParts }) {
+  const uid = useId()
+  const [draftSubj, setDraftSubj] = useState('')
+  const [draftPart, setDraftPart] = useState('')
+  const safeParts = typeof getParts === 'function' ? (getParts(draftSubj) || []) : []
+  const canApply = selectedCount > 0 && (!!draftSubj.trim() || !!draftPart.trim())
+  const inputStyle = { width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '10px 12px', color: '#e2e8f0', fontSize: 13, outline: 'none', minWidth: 0 }
+
+  const apply = () => {
+    if (!canApply) return
+    onApply({ subject: draftSubj, part: draftPart })
+    setDraftSubj('')
+    setDraftPart('')
+  }
+
+  return (
+    <div style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.24)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 800, marginBottom: 5 }}>선택 카드 일괄 변경</div>
+          <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.55 }}>선택된 {selectedCount}장의 과목/단원을 한 번에 맞춥니다. 빈칸은 기존 값을 유지합니다.</div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <DataListInput id={`sel-sub-${uid}`} value={draftSubj} onChange={e => setDraftSubj(e.target.value)} placeholder="새 과목명" style={inputStyle} options={subjects} />
+        <DataListInput id={`sel-part-${uid}`} value={draftPart} onChange={e => setDraftPart(e.target.value)} placeholder="새 단원명" style={inputStyle} options={safeParts} />
+        <button
+          onClick={apply}
+          disabled={!canApply}
+          style={{
+            background: canApply ? 'linear-gradient(135deg,#0ea5e9,#6366f1)' : '#1e293b',
+            color: canApply ? '#fff' : '#475569',
+            border: 'none',
+            borderRadius: 8,
+            padding: '10px 16px',
+            fontSize: 13,
+            cursor: canApply ? 'pointer' : 'not-allowed',
+            fontWeight: 800,
+            flexShrink: 0,
+            whiteSpace: 'nowrap'
+          }}
+        >선택 {selectedCount}장 적용</button>
+      </div>
     </div>
   )
 }
@@ -599,6 +888,7 @@ export default function ExtractPage({ cards, onImport }) {
   const [importMsg, setImportMsg] = useState('')
   const [loadingPct, setLoadingPct] = useState(0)
   const [truncated, setTruncated] = useState(false)
+  const [droppedCount, setDroppedCount] = useState(0)
   const [lastSource, setLastSource] = useState(null)
   const inputRef = useRef(null)
 
@@ -640,6 +930,26 @@ export default function ExtractPage({ cards, onImport }) {
     }))
   }, [cards.allCards])
 
+  const applyToSelected = useCallback(({ subject, part }) => {
+    const nextSubject = cleanSubjectLabel(subject)
+    const nextPart = cleanPartLabel(part)
+    if (selected.size === 0 || (!nextSubject && !nextPart)) return
+
+    const appliedCount = selected.size
+    setExtracted(prev => prev.map((card, index) => {
+      if (!selected.has(index)) return card
+      const updated = {
+        ...card,
+        subject: nextSubject || card.subject,
+        part: nextPart || card.part,
+      }
+      updated._type = classifyCard(updated, cards.allCards || []).type
+      return updated
+    }))
+    setImportMsg(`✓ 선택 카드 ${appliedCount}장 분류를 적용했습니다`)
+    setTimeout(() => setImportMsg(''), 2500)
+  }, [cards.allCards, selected])
+
   const saveGeminiKey = (k) => { sessionStorage.setItem('gemini_key', k); setGeminiKey(k) }
 
   const readBase64 = (f) => new Promise((res, rej) => {
@@ -658,33 +968,41 @@ export default function ExtractPage({ cards, onImport }) {
           ? { subject: c.subject || '', part: c.part || '', question: c.question || '', mnemonic: '', detail: '', answer: c.answer || '' }
           : { subject: c.subject || '', part: c.part || '', question: c.question || '', mnemonic: c.mnemonic || '', detail: c.detail || '', answer: c.answer || '' }
       )
-      .filter((c) => c.question || c.mnemonic || c.detail || c.answer)
+      .map(sanitizeCard)
 
-    if (normalized.length === 0) {
-      throw new Error(extractType === 'qa' ? '핵심 Q&A 내용을 추출하지 못했습니다.' : '두문자 카드를 추출하지 못했습니다.')
+    // 두문자/설명 + 두문자 패턴 검증 — AI가 거부 규칙 어긴 카드 자동 제거
+    const beforeFilter = normalized.length
+    const validated = normalized.filter((c) => isValidExtractedCard(c, extractType))
+    const droppedThisRun = beforeFilter - validated.length
+
+    if (validated.length === 0) {
+      throw new Error(extractType === 'qa'
+        ? '추출된 Q&A 카드의 답이 모두 비어 있어 사용할 수 없습니다.'
+        : '추출된 두문자 카드가 모두 부실(설명 없음·구분자 없음·대제목 오인 등)하여 사용할 수 없습니다. 문서의 두문자 형식과 풀이를 확인하고 다시 시도해주세요.')
     }
 
     const mergeBase = Array.isArray(options.mergeBase)
       ? options.mergeBase.map(({ _type, ...card }) => card)
       : []
 
-    const classified = mergeExtractedCards([...mergeBase, ...normalized])
+    const classified = mergeExtractedCards([...mergeBase, ...validated])
       .map((c) => ({ ...c, _type: classifyCard(c, cards.allCards || []).type }))
 
     setExtracted(classified)
     setSelected(new Set(classified.map((c, i) => i).filter((i) => classified[i]._type !== 'existing')))
     setTruncated(wasTruncated)
+    setDroppedCount(droppedThisRun)
     setFilterTab(options.mergeBase ? 'all' : 'new')
     setReviewFilter('all')
     setStatus('done')
     if (options.mergeBase) {
-      setImportMsg(`✓ 더 촘촘히 재추출 완료 · 총 ${classified.length}장으로 병합됨`)
+      setImportMsg(`✓ 더 촘촘히 재추출 완료 · 총 ${classified.length}장으로 병합됨${droppedThisRun > 0 ? ` (부실 ${droppedThisRun}장 자동 제외)` : ''}`)
       setTimeout(() => setImportMsg(''), 3500)
     }
   }, [cards.allCards, extractType])
 
   const runExtraction = useCallback(async (geminiPayload, label, options = {}) => {
-    setStatus('loading'); setErrorMsg(''); setTruncated(false)
+    setStatus('loading'); setErrorMsg(''); setTruncated(false); setDroppedCount(0)
     if (!options.mergeBase) { setExtracted([]); setSelected(new Set()) }
     try {
       setProgress(`${label}${options.dense ? ' 더 촘촘히 재추출' : ''} 분석 준비 중...`)
@@ -701,7 +1019,7 @@ export default function ExtractPage({ cards, onImport }) {
   }, [geminiKey, extractType, finishExtraction])
 
   const runTextExtraction = useCallback(async (text, label, options = {}) => {
-    setStatus('loading'); setErrorMsg(''); setTruncated(false)
+    setStatus('loading'); setErrorMsg(''); setTruncated(false); setDroppedCount(0)
     if (!options.mergeBase) { setExtracted([]); setSelected(new Set()) }
     try {
       setProgress(`${label}${options.dense ? ' 더 촘촘히 재추출' : ''} 분석 준비 중...`)
@@ -810,7 +1128,15 @@ export default function ExtractPage({ cards, onImport }) {
 
   // addCards 는 async — 반드시 await 해야 added 가 숫자로 들어온다
   const doImport = async () => {
-    const toAdd = extracted.filter((c, i) => selected.has(i)).map(({ _type, ...c }) => c)
+    const extractionBatchId = makeExtractionBatchId()
+    const extractedAt = new Date().toISOString()
+    const extractionSource = lastSource?.label || file?.name || (inputMode === 'text' ? '텍스트' : 'AI 추출')
+    const toAdd = extracted.filter((c, i) => selected.has(i)).map(({ _type, ...c }) => ({
+      ...c,
+      extractionBatchId,
+      extractionSource,
+      extractedAt,
+    }))
     if (toAdd.length === 0) return
     const added = await cards.addCards(toAdd)
     const skipped = toAdd.length - added
@@ -821,6 +1147,7 @@ export default function ExtractPage({ cards, onImport }) {
   const reset = () => {
     setFile(null); setStatus('idle'); setExtracted([]); setSelected(new Set())
     setErrorMsg(''); setTextInput(''); setTruncated(false); setLastSource(null); setReviewFilter('all')
+    setDroppedCount(0)
   }
 
   const inputStyle = { flex: 1, background: '#0f172a', border: '1px solid #334155', minWidth: 0, borderRadius: 10, padding: '10px 14px', color: '#e2e8f0', fontSize: 14, fontFamily: 'monospace', outline: 'none' }
@@ -946,6 +1273,12 @@ export default function ExtractPage({ cards, onImport }) {
 
       {status === 'done' && (
         <div style={{ width: '100%' }}>
+          {droppedCount > 0 && (
+            <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, color: '#86efac', fontSize: 13, lineHeight: 1.55 }}>
+              🧹 부실 카드 <b>{droppedCount}장</b>을 자동으로 제외했습니다 (두문자/설명 비어있음, 대제목 오인, 구분자 없음 등).
+            </div>
+          )}
+
           {truncated && (
             <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: 12, padding: '14px 16px', marginBottom: 16, color: '#fbbf24', fontSize: 13, lineHeight: 1.6 }}>
               ⚠️ <b>일부 결과가 불안정할 수 있습니다:</b> 응답이 중간에 잘렸거나 일부 텍스트 조각 분석에 실패했을 수 있으니, 누락이 보이면 <b>문서를 조금 더 작게 분할하여</b> 실행해 주세요.
@@ -953,6 +1286,7 @@ export default function ExtractPage({ cards, onImport }) {
           )}
 
           <GroupEditorPanel extracted={extracted} onUpdateGroup={updateGroup} subjects={allSubjects} getParts={getPartsForSubject} />
+          <SelectedBatchPanel selectedCount={selected.size} onApply={applyToSelected} subjects={allSubjects} getParts={getPartsForSubject} />
 
           <div style={{ background: 'rgba(15,23,42,0.72)', border: '1px solid #1e293b', borderRadius: 16, padding: 16, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>

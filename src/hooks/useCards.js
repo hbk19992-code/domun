@@ -221,6 +221,35 @@ export function useCards() {
     ]);
   }, [userCards, commitOps]);
 
+  const updateCardsByIds = useCallback(async (ids, updates) => {
+    if (!uidRef.current || !Array.isArray(ids) || ids.length === 0) return 0;
+    const patch = Object.fromEntries(
+      Object.entries(updates || {}).filter(([, value]) => value !== undefined && value !== null)
+    );
+    if (Object.keys(patch).length === 0) return 0;
+
+    const targetIds = new Set(ids.filter(Boolean));
+    const updatedCards = [];
+    const nextCards = userCards.map((card) => {
+      if (!targetIds.has(card.id)) return card;
+      const updated = { ...card, ...patch };
+      updatedCards.push(updated);
+      return updated;
+    });
+
+    if (updatedCards.length === 0) return 0;
+
+    await commitOps(nextCards, () =>
+      updatedCards.map(card => ({
+        type: 'set',
+        ref: doc(db, 'users', uidRef.current, 'cards', card.id),
+        data: patch,
+        options: { merge: true }
+      }))
+    );
+    return updatedCards.length;
+  }, [userCards, commitOps]);
+
   const deleteCard = useCallback(async (id) => {
     if (!uidRef.current || !id) return;
     const nextCards = userCards.filter(c => c.id !== id);
@@ -387,7 +416,7 @@ export function useCards() {
   return {
     allCards, userCards, builtinCards, loading,
     syncing, syncError,
-    addCard, addCards, deleteCard, updateCard,
+    addCard, addCards, deleteCard, updateCard, updateCardsByIds,
     moveCard: () => {}, reorderCard: () => {}, deleteBy, countBy, renameFolder,
     exportJSON, exportX4TXT, exportX4EPUB, importJSON, deduplicateSelf, duplicateCount,
     subjects, parts,
