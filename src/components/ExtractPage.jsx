@@ -81,9 +81,22 @@ const PDF_DENSE_PAGE_BATCH_SIZE = 1
 const GEMINI_TIMEOUT_MS = 180000
 const GEMINI_MAX_OUTPUT_TOKENS = 50000
 const GEMINI_CHUNK_OUTPUT_TOKENS = 24000
+const PDF_RANGE_DELAY_MS = 2500
+const PDF_DENSE_RANGE_DELAY_MS = 4000
+const PDF_RANGE_LONG_PAUSE_EVERY = 5
+const PDF_RANGE_LONG_PAUSE_MS = 12000
 
 function makeExtractionBatchId() {
   return `extract_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isFatalExtractionError(error) {
+  const message = String(error?.message || '')
+  return message.includes('API 키') || message.includes('__AUTH__')
 }
 
 const DENSE_PROMPT_SUFFIX = `\n\n【더 촘촘히 재추출 모드】\n- 이미 뽑힌 카드와 겹치더라도 누락 가능성 있으면 다시 추출.\n- 큰 단락 하나를 카드 하나로 요약하지 말고, 요건/효과/예외/판례/정의/비교 포인트를 가능한 한 작은 단위로 쪼갠다.\n- 두문자 주변 괄호·표·번호·조문·판례명·예외 문구를 놓치지 않는다.\n- 거부 규칙은 그대로 유지: mnemonic·detail 둘 다 명확히 작성된 카드만 출력. 줄바꿈으로 끊긴 풀이도 같은 단원이면 합쳐서 1장으로 작성.\n- 풀이를 정확히 모르는 글자가 하나라도 있으면 그 카드는 통째로 버려라.`
@@ -798,12 +811,10 @@ async function extractTextWithChunks(apiKey, text, systemPrompt, label, setProgr
       }
       wasTruncated = wasTruncated || truncated
     } catch (e) {
+      if (isFatalExtractionError(e)) throw e
       if (chunks.length === 1) throw e
       failed.push({ index: i + 1, message: e.message })
       console.warn(`텍스트 조각 ${i + 1}/${chunks.length} 추출 실패`, e)
-      if (failed.length > Math.max(1, Math.ceil(chunks.length * 0.35))) {
-        throw new Error(`텍스트 조각 ${failed.length}개 분석에 실패했습니다. 문서를 더 작게 나눠 다시 시도해주세요.`)
-      }
     }
   }
 
@@ -847,16 +858,24 @@ async function extractPdfWithPageRanges(apiKey, base64, pageCount, systemPrompt,
       }
       wasTruncated = wasTruncated || truncated
     } catch (e) {
+      if (isFatalExtractionError(e)) throw e
       failed.push({ range, message: e.message })
       console.warn(`PDF ${range.start}-${range.end}쪽 추출 실패`, e)
-      if (failed.length > Math.max(1, Math.ceil(ranges.length * 0.35))) {
-        throw new Error(`PDF 구간 ${failed.length}개 분석에 실패했습니다. PDF를 단원별로 나눠 다시 시도해주세요.`)
-      }
+    }
+
+    if (i < ranges.length - 1) {
+      const isLongPause = (i + 1) % PDF_RANGE_LONG_PAUSE_EVERY === 0
+      const pauseMs = isLongPause
+        ? PDF_RANGE_LONG_PAUSE_MS
+        : (options.dense ? PDF_DENSE_RANGE_DELAY_MS : PDF_RANGE_DELAY_MS)
+      setProgress(`${label} · 무료 한도 보호를 위해 ${Math.ceil(pauseMs / 1000)}초 쉬는 중... (${i + 1}/${ranges.length})`)
+      await wait(pauseMs)
     }
   }
 
   if (collected.length === 0 && failed.length > 0) {
-    throw new Error('모든 PDF 구간 분석에 실패했습니다. PDF를 단원별로 나눠 다시 시도해주세요.')
+    const sample = failed[0]?.message ? ` (${failed[0].message})` : ''
+    throw new Error(`모든 PDF 구간 분석에 실패했습니다. Gemini 무료 한도 또는 일시적 혼잡일 수 있습니다. 잠시 후 다시 시도해주세요.${sample}`)
   }
 
   return {
