@@ -465,6 +465,7 @@ export default function ManagePage({ cards }) {
                       <DataListInput id={`edit-sub-dl-${c.id}`} value={editCardDraft.subject} onChange={e => setEditCardDraft({...editCardDraft, subject: e.target.value})} placeholder="과목" style={S.input} options={subjects} />
                       <DataListInput id={`edit-part-dl-${c.id}`} value={editCardDraft.part} onChange={e => setEditCardDraft({...editCardDraft, part: e.target.value})} placeholder="단원" style={S.input} options={draftPartOptions} />
                     </div>
+                    <input style={{...S.input, width: '100%', marginBottom: 6}} value={editCardDraft.sourceNumber || ''} onChange={e => setEditCardDraft({...editCardDraft, sourceNumber: e.target.value})} placeholder="원문 번호" />
                     <input style={{...S.input, width: '100%', marginBottom: 6}} value={editCardDraft.question} onChange={e => setEditCardDraft({...editCardDraft, question: e.target.value})} placeholder="질문" />
                     {isAnswer ? (
                       <textarea style={{...S.input, width: '100%', marginBottom: 6, minHeight: 50, resize: 'vertical'}} value={editCardDraft.answer} onChange={e => setEditCardDraft({...editCardDraft, answer: e.target.value})} placeholder={answerLabel(editKind)} />
@@ -491,6 +492,7 @@ export default function ManagePage({ cards }) {
                     <div style={{ display: 'flex', gap: 5, marginBottom: 4, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 10, background: '#1e293b', color: '#94a3b8', padding: '1px 6px', borderRadius: 4 }}>{c.subject}</span>
                       <span style={{ fontSize: 10, background: '#1e293b', color: '#64748b', padding: '1px 6px', borderRadius: 4 }}>{c.part}</span>
+                      {c.sourceNumber && <span style={{ fontSize: 10, background: 'rgba(14,165,233,0.12)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.28)', padding: '1px 6px', borderRadius: 4 }}>원문 {c.sourceNumber}</span>}
                       <span style={{ fontSize: 10, background: isAnswer ? 'rgba(245,158,11,0.15)' : 'rgba(99,102,241,0.15)', color: isAnswer ? '#f59e0b' : '#818cf8', padding: '1px 6px', borderRadius: 4 }}>{cardKindLabel(kind)}</span>
                     </div>
                     <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.question}</div>

@@ -26,6 +26,7 @@ function normalizeCards(cards) {
       cardType: cleanText(card.cardType),
       subject: cleanText(card.subject) || '미분류',
       part: cleanText(card.part) || '기본',
+      sourceNumber: cleanText(card.sourceNumber),
       question: cleanText(card.question),
       mnemonic: cleanText(card.mnemonic),
       detail: cleanText(card.detail),
@@ -70,7 +71,8 @@ function txtForCards(cards, title = '두문자 카드') {
   groupCards(normalized).forEach((group) => {
     lines.push(`[${group.subject} / ${group.part}]`, '')
     group.cards.forEach((card, idx) => {
-      lines.push(`${idx + 1}. ${card.question}`)
+      const sourcePrefix = card.sourceNumber ? ` [원문 ${card.sourceNumber}]` : ''
+      lines.push(`${idx + 1}.${sourcePrefix} ${card.question}`)
       if (isAnswerCard(card)) {
         lines.push(`${answerLabel(card)}: ${card.answer}`)
       } else {
@@ -114,7 +116,7 @@ function cardsXhtml(cards, title = '두문자 카드') {
 
       return `
         <article class="card">
-          <p class="number">${idx + 1}</p>
+          <p class="number">${idx + 1}${card.sourceNumber ? ` · 원문 ${escapeXml(card.sourceNumber)}` : ''}</p>
           <h3>${escapeXml(card.question)}</h3>
           ${answer}
         </article>

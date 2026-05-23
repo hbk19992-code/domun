@@ -371,7 +371,7 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
     <>
       <div style={S.card(flipped, flipped ? entryOf(card)?.status : null)}
         onClick={() => !editOpen && setFlipped((f) => !f)}>
-        <div style={S.badge}>{card.subject} · {card.part} · {cardKindLabel(kind)}</div>
+        <div style={S.badge}>{card.subject} · {card.part}{card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(kind)}</div>
         <div style={S.question}>{card.question}</div>
         {flipped ? (
           <>
@@ -418,6 +418,7 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
         <div style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid #334155', borderRadius: 16, padding: 18, marginBottom: 14 }}>
           <div style={{ color: '#94a3b8', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>카드 편집</div>
           <div style={{ display: 'flex', gap: 6 }}>{inp('subject', '과목')}{inp('part', '단원')}</div>
+          {inp('sourceNumber', '원문 번호')}
           {inp('question', '질문')}
           {isAnswer ? inp('answer', answerLabel(kind), true) : <>{inp('mnemonic', '두문자')}{inp('detail', '설명', true)}</>}
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
