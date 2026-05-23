@@ -85,6 +85,7 @@ const PDF_RANGE_DELAY_MS = 2500
 const PDF_DENSE_RANGE_DELAY_MS = 4000
 const PDF_RANGE_LONG_PAUSE_EVERY = 5
 const PDF_RANGE_LONG_PAUSE_MS = 12000
+const EXTRACTOR_VERSION_LABEL = '번호 PDF 안정화 v2 · 2026-05-23'
 
 function makeExtractionBatchId() {
   return `extract_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -97,6 +98,14 @@ function wait(ms) {
 function isFatalExtractionError(error) {
   const message = String(error?.message || '')
   return message.includes('API 키') || message.includes('__AUTH__')
+}
+
+function friendlyExtractionError(error) {
+  const message = String(error?.message || '')
+  if (/PDF 구간 \d+개 분석에 실패했습니다/.test(message) || message.includes('PDF를 단원별로 나눠')) {
+    return '이전 버전 추출 오류가 감지되었습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요. 최신 버전에서는 실패한 일부 구간이 있어도 성공한 결과를 먼저 보여줍니다.'
+  }
+  return message
 }
 
 const DENSE_PROMPT_SUFFIX = `\n\n【더 촘촘히 재추출 모드】\n- 이미 뽑힌 카드와 겹치더라도 누락 가능성 있으면 다시 추출.\n- 큰 단락 하나를 카드 하나로 요약하지 말고, 요건/효과/예외/판례/정의/비교 포인트를 가능한 한 작은 단위로 쪼갠다.\n- 두문자 주변 괄호·표·번호·조문·판례명·예외 문구를 놓치지 않는다.\n- 거부 규칙은 그대로 유지: mnemonic·detail 둘 다 명확히 작성된 카드만 출력. 줄바꿈으로 끊긴 풀이도 같은 단원이면 합쳐서 1장으로 작성.\n- 풀이를 정확히 모르는 글자가 하나라도 있으면 그 카드는 통째로 버려라.`
@@ -1382,7 +1391,7 @@ export default function ExtractPage({ cards, onImport }) {
       const { data: parsed, truncated: wasTruncated } = repairJSON(raw)
       finishExtraction(parsed, wasTruncated, { mergeBase: options.mergeBase })
     } catch (e) {
-      setErrorMsg(e.message)
+      setErrorMsg(friendlyExtractionError(e))
       setStatus('error')
     }
   }, [geminiKey, extractType, finishExtraction])
@@ -1398,7 +1407,7 @@ export default function ExtractPage({ cards, onImport }) {
       const { data: parsed, truncated: wasTruncated } = await extractTextWithChunks(geminiKey, text, prompt, label, setProgress, { dense: options.dense, extractType })
       finishExtraction(parsed, wasTruncated, { mergeBase: options.mergeBase })
     } catch (e) {
-      setErrorMsg(e.message)
+      setErrorMsg(friendlyExtractionError(e))
       setStatus('error')
     }
   }, [geminiKey, extractType, finishExtraction])
@@ -1423,7 +1432,7 @@ export default function ExtractPage({ cards, onImport }) {
       )
       finishExtraction(parsed, wasTruncated, { mergeBase: options.mergeBase })
     } catch (e) {
-      setErrorMsg(e.message)
+      setErrorMsg(friendlyExtractionError(e))
       setStatus('error')
     }
   }, [geminiKey, extractType, finishExtraction])
@@ -1589,6 +1598,7 @@ export default function ExtractPage({ cards, onImport }) {
       <h2 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>AI 카드 추출</h2>
       <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24, wordBreak: 'keep-all' }}>
         Gemini 무료 API 키로 PDF와 텍스트를 작게 나눠 분석하고, 원문 번호와 순서대로 시험 암기 노트를 빌드합니다.
+        <span style={{ display: 'block', color: '#475569', fontSize: 12, marginTop: 6 }}>{EXTRACTOR_VERSION_LABEL}</span>
       </p>
 
       {/* 🔑 API 키 패널 */}
