@@ -25,7 +25,7 @@ function withClassification(card, allCards) {
 }
 
 function stripRuntimeMeta(card) {
-  const { _type, _match, ...rest } = card || {}
+  const { _type, _match, _sourceOrder, ...rest } = card || {}
   return rest
 }
 
@@ -89,6 +89,8 @@ function makeExtractionBatchId() {
 const DENSE_PROMPT_SUFFIX = `\n\n【더 촘촘히 재추출 모드】\n- 이미 뽑힌 카드와 겹치더라도 누락 가능성 있으면 다시 추출.\n- 큰 단락 하나를 카드 하나로 요약하지 말고, 요건/효과/예외/판례/정의/비교 포인트를 가능한 한 작은 단위로 쪼갠다.\n- 두문자 주변 괄호·표·번호·조문·판례명·예외 문구를 놓치지 않는다.\n- 거부 규칙은 그대로 유지: mnemonic·detail 둘 다 명확히 작성된 카드만 출력. 줄바꿈으로 끊긴 풀이도 같은 단원이면 합쳐서 1장으로 작성.\n- 풀이를 정확히 모르는 글자가 하나라도 있으면 그 카드는 통째로 버려라.`
 
 const DENSE_ANSWER_PROMPT_SUFFIX = `\n\n【더 촘촘히 재추출 모드】\n- 이미 뽑힌 카드와 겹치더라도 누락 가능성 있으면 다시 추출.\n- 큰 단락 하나를 카드 하나로 요약하지 말고, 정의/요건/효과/예외/기간/절차/비교/판례법리를 작은 카드로 쪼갠다.\n- 문서에 직접 근거가 있는 내용만 출력한다.\n- question과 answer를 모두 명확히 채울 수 없는 카드는 버린다.\n- 출력은 순수 JSON 배열만 반환한다.`
+
+const ORDER_PROMPT_SUFFIX = `\n\n【원문 순서 유지 — 매우 중요】\n- 출력 JSON 배열의 카드 순서는 반드시 참조 문서에 등장한 순서와 같아야 한다.\n- 과목·단원·카드유형·중요도별로 재정렬하지 않는다.\n- 같은 단락에서 여러 카드가 나오면 원문에서 먼저 설명된 항목을 먼저 출력한다.\n- PDF/텍스트가 여러 조각으로 나뉘어도 각 조각 안에서는 원문 순서를 지킨다.`
 
 const MNEMONIC_PROMPT = `당신은 한국 법학 시험용 두문자(약어) 카드 추출 전문가입니다.
 시험 자료(특히 변호사시험·로스쿨 두문자집)의 계층 구조를 이해하고, 풀이가 명확한 두문자만 카드로 만듭니다.
@@ -570,6 +572,7 @@ function makeChunkPrompt(chunk, index, total, options = {}) {
   if (total <= 1) {
     return `다음 텍스트에서 ${target} 카드를 빠짐없이 추출하세요. 요약 금지.
 ${rules}${denseGuide}
+원문에 나타난 순서 그대로 JSON 배열을 작성하세요. 주제별·유형별로 재정렬하지 마세요.
 출력은 JSON 배열만.
 
 ${chunk}`
@@ -577,6 +580,7 @@ ${chunk}`
   return `다음은 전체 문서 중 ${index + 1}/${total}번째 조각입니다.
 이 조각의 ${target} 대상과 핵심 쟁점을 모두 추출하세요. 앞뒤 조각과 겹쳐도 누락 방지 우선.
 ${rules}${denseGuide}
+이 조각 안에서 원문에 나타난 순서 그대로 JSON 배열을 작성하세요. 주제별·유형별로 재정렬하지 마세요.
 출력은 JSON 배열만.
 
 ${chunk}`
@@ -588,6 +592,26 @@ function cardMergeKey(card) {
   return `${question}|||${payload}`
 }
 
+function getCardSourceOrder(card, fallback = Number.MAX_SAFE_INTEGER) {
+  const raw = card?._sourceOrder ?? card?.sourceOrder ?? card?.source_order ?? card?.order
+  const num = Number(raw)
+  return Number.isFinite(num) ? num : fallback
+}
+
+function withSequentialSourceOrder(cards, start = 0) {
+  return cards.map((card, index) => ({
+    ...card,
+    _sourceOrder: getCardSourceOrder(card, start + index),
+  }))
+}
+
+function sortCardsBySourceOrder(cards) {
+  return cards
+    .map((card, index) => ({ card, index, order: getCardSourceOrder(card, index) }))
+    .sort((a, b) => (a.order - b.order) || (a.index - b.index))
+    .map(({ card }) => card)
+}
+
 function longerValue(a, b) {
   const av = a == null ? '' : String(a)
   const bv = b == null ? '' : String(b)
@@ -596,7 +620,7 @@ function longerValue(a, b) {
 
 function mergeExtractedCards(cards) {
   const map = new Map()
-  cards.forEach((card) => {
+  sortCardsBySourceOrder(withSequentialSourceOrder(cards)).forEach((card) => {
     if (!card || typeof card !== 'object') return
     const key = cardMergeKey(card)
     if (key === '|||') return
@@ -615,9 +639,10 @@ function mergeExtractedCards(cards) {
       mnemonic: longerValue(prev.mnemonic, card.mnemonic),
       detail: longerValue(prev.detail, card.detail),
       answer: longerValue(prev.answer, card.answer),
+      _sourceOrder: Math.min(getCardSourceOrder(prev), getCardSourceOrder(card)),
     })
   })
-  return Array.from(map.values())
+  return sortCardsBySourceOrder(Array.from(map.values()))
 }
 
 // 후처리: AI가 가끔 part 필드에 "채·권·총·론"처럼 가운뎃점/공백/괄호를 그대로 넣음 → 정리
@@ -729,7 +754,10 @@ async function extractTextWithChunks(apiKey, text, systemPrompt, label, setProgr
         { maxOutputTokens: chunks.length > 1 ? GEMINI_CHUNK_OUTPUT_TOKENS : GEMINI_MAX_OUTPUT_TOKENS }
       )
       const { data, truncated } = repairJSON(raw)
-      if (Array.isArray(data)) collected.push(...data)
+      if (Array.isArray(data)) {
+        const offset = collected.length
+        collected.push(...data.map((card, j) => ({ ...card, _sourceOrder: offset + j })))
+      }
       wasTruncated = wasTruncated || truncated
     } catch (e) {
       if (chunks.length === 1) throw e
@@ -775,7 +803,10 @@ async function extractPdfWithPageRanges(apiKey, base64, pageCount, systemPrompt,
         { maxOutputTokens: GEMINI_CHUNK_OUTPUT_TOKENS }
       )
       const { data, truncated } = repairJSON(raw)
-      if (Array.isArray(data)) collected.push(...data)
+      if (Array.isArray(data)) {
+        const offset = collected.length
+        collected.push(...data.map((card, j) => ({ ...card, _sourceOrder: offset + j })))
+      }
       wasTruncated = wasTruncated || truncated
     } catch (e) {
       failed.push({ range, message: e.message })
@@ -852,8 +883,9 @@ function buildPrompt(extractType, dense = false) {
     extractType === 'case' ? CASE_PROMPT :
     extractType === 'statute' ? STATUTE_PROMPT :
     MNEMONIC_PROMPT
-  if (!dense) return base
-  return extractType === 'mnemonic' ? `${base}${DENSE_PROMPT_SUFFIX}` : `${base}${DENSE_ANSWER_PROMPT_SUFFIX}`
+  const orderedBase = `${base}${ORDER_PROMPT_SUFFIX}`
+  if (!dense) return orderedBase
+  return extractType === 'mnemonic' ? `${orderedBase}${DENSE_PROMPT_SUFFIX}` : `${orderedBase}${DENSE_ANSWER_PROMPT_SUFFIX}`
 }
 
 function buildPdfInstruction(extractType, dense = false) {
@@ -865,9 +897,10 @@ function buildPdfInstruction(extractType, dense = false) {
         : extractType === 'qa'
           ? '이 PDF에서 시험에 나올 정의·요건·효과·예외·기간·절차·비교·판례법리를 Q&A 카드로 빠짐없이 만드세요. 대제목【 】은 part 값(점 제거)으로 쓰고, 한 카드에는 한 쟁점만 담으세요. question·answer 모두 채울 수 있는 카드만 출력합니다.'
           : '이 PDF는 한국 법학 두문자 자료입니다. 위에서부터 한 단원씩 순차 처리하며, 대제목【 】은 part 값(점 제거)으로, 점·꺽쇠·+로 분리된 패턴만 mnemonic으로, 줄바꿈으로 끊긴 풀이는 같은 소단원이면 1장의 카드로 묶어 처리하세요. mnemonic·detail 모두 채울 수 있는 카드만 출력합니다.'
+  const orderedCore = `${core} 반드시 실제 PDF 페이지와 본문에 나온 순서 그대로 카드 배열을 작성하고, 주제별·유형별로 재정렬하지 마세요.`
   return dense
-    ? `더 촘촘히 재추출합니다. ${core} 이미 나온 카드와 겹쳐도 누락 방지가 우선입니다. 출력은 JSON 배열만 반환하세요.`
-    : `${core} 출력은 JSON 배열만 반환하세요.`
+    ? `더 촘촘히 재추출합니다. ${orderedCore} 이미 나온 카드와 겹쳐도 누락 방지가 우선입니다. 출력은 JSON 배열만 반환하세요.`
+    : `${orderedCore} 출력은 JSON 배열만 반환하세요.`
 }
 
 function estimatePdfPageCountFromBytes(bytes) {
@@ -906,7 +939,8 @@ function buildPdfRangeInstruction(extractType, range, totalPages, dense = false)
 
 이번 요청에서는 첨부된 전체 PDF 중 실제 PDF ${range.start}쪽부터 ${range.end}쪽까지만 처리하세요.
 ${range.start}쪽 이전과 ${range.end}쪽 이후 내용은 보이더라도 절대 출력하지 마세요.
-총 ${totalPages}쪽 문서를 여러 번 나누어 추출하는 중이므로, 이 구간 안의 카드만 JSON 배열로 반환하세요.`
+총 ${totalPages}쪽 문서를 여러 번 나누어 추출하는 중이므로, 이 구간 안의 카드만 JSON 배열로 반환하세요.
+이 구간 안에서도 ${range.start}쪽부터 ${range.end}쪽까지 페이지 순서와 본문 순서를 그대로 지키세요.`
 }
 
 function DataListInput({ id, value, onChange, placeholder, style, options }) {
@@ -1223,9 +1257,9 @@ export default function ExtractPage({ cards, onImport }) {
 
     const normalized = parsed
       .filter((c) => c && typeof c === 'object')
-      .map((c) => {
+      .map((c, index) => {
         if (extractType === 'mnemonic') {
-          return { cardType: 'mnemonic', subject: c.subject || '', part: c.part || '', question: c.question || '', mnemonic: c.mnemonic || '', detail: c.detail || '', answer: c.answer || '' }
+          return { cardType: 'mnemonic', subject: c.subject || '', part: c.part || '', question: c.question || '', mnemonic: c.mnemonic || '', detail: c.detail || '', answer: c.answer || '', _sourceOrder: getCardSourceOrder(c, index) }
         }
         return {
           cardType: extractType,
@@ -1235,6 +1269,7 @@ export default function ExtractPage({ cards, onImport }) {
           mnemonic: '',
           detail: '',
           answer: c.answer || c.summary || c.holding || c.text || '',
+          _sourceOrder: getCardSourceOrder(c, index),
         }
       })
       .map(sanitizeCard)
@@ -1251,7 +1286,10 @@ export default function ExtractPage({ cards, onImport }) {
     }
 
     const mergeBase = Array.isArray(options.mergeBase)
-      ? options.mergeBase.map(stripRuntimeMeta)
+      ? options.mergeBase.map((card, index) => {
+          const { _type, _match, ...rest } = card || {}
+          return { ...rest, _sourceOrder: getCardSourceOrder(card, index) }
+        })
       : []
 
     const classified = mergeExtractedCards([...mergeBase, ...validated])
@@ -1488,7 +1526,7 @@ export default function ExtractPage({ cards, onImport }) {
     <div style={{ width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
       <h2 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>AI 카드 추출</h2>
       <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24, wordBreak: 'keep-all' }}>
-        Gemini 무료 API 키로 PDF와 텍스트를 작게 나눠 분석해 시험 암기 노트를 빌드합니다.
+        Gemini 무료 API 키로 PDF와 텍스트를 작게 나눠 분석하고, 원문 순서대로 시험 암기 노트를 빌드합니다.
       </p>
 
       {/* 🔑 API 키 패널 */}
