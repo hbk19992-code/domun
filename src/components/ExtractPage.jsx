@@ -75,6 +75,9 @@ const TEXT_CHUNK_CHARS = 9000
 const TEXT_CHUNK_OVERLAP = 600
 const DENSE_TEXT_CHUNK_CHARS = 5500
 const DENSE_TEXT_CHUNK_OVERLAP = 900
+const PDF_DIRECT_PAGE_LIMIT = 6
+const PDF_PAGE_BATCH_SIZE = 4
+const PDF_DENSE_PAGE_BATCH_SIZE = 3
 const GEMINI_TIMEOUT_MS = 180000
 const GEMINI_MAX_OUTPUT_TOKENS = 50000
 const GEMINI_CHUNK_OUTPUT_TOKENS = 24000
@@ -528,12 +531,16 @@ function makeChunkPrompt(chunk, index, total, options = {}) {
     ? `\n핵심: 판례명·사건번호·쟁점·판시사항을 찾아 question/answer 카드로 만들 것. 판례가 아닌 일반 설명은 출력하지 말 것.\n`
     : options.extractType === 'statute'
       ? `\n핵심: 조문 번호·요건·효과·예외·기간·절차를 찾아 question/answer 카드로 만들 것. 조문과 무관한 일반 설명은 출력하지 말 것.\n`
-      : `\n핵심: (1) 줄바꿈으로 두문자·풀이가 끊어져 있어도 같은 소단원이면 1장의 카드로 묶을 것. (2) part는 가장 가까운 위쪽 대제목【 】에서 점·공백 제거하여 추출. (3) mnemonic·detail 둘 다 채울 수 없는 카드는 출력 금지.\n`
+      : options.extractType === 'qa'
+        ? `\n핵심: 시험에 나올 개념·요건·효과·예외·비교 포인트를 question/answer 카드로 빠짐없이 만들 것. 한 카드에는 한 쟁점만 담고, answer가 비어 있거나 단어 1개뿐인 카드는 출력하지 말 것.\n`
+        : `\n핵심: (1) 줄바꿈으로 두문자·풀이가 끊어져 있어도 같은 소단원이면 1장의 카드로 묶을 것. (2) part는 가장 가까운 위쪽 대제목【 】에서 점·공백 제거하여 추출. (3) mnemonic·detail 둘 다 채울 수 없는 카드는 출력 금지.\n`
   const target = options.extractType === 'case'
     ? '판례 요지'
     : options.extractType === 'statute'
       ? '조문 암기'
-      : '두문자/Q&A'
+      : options.extractType === 'qa'
+        ? 'Q&A'
+        : '두문자'
   if (total <= 1) {
     return `다음 텍스트에서 ${target} 카드를 빠짐없이 추출하세요. 요약 금지.
 ${rules}${denseGuide}
@@ -718,6 +725,51 @@ async function extractTextWithChunks(apiKey, text, systemPrompt, label, setProgr
   }
 }
 
+async function extractPdfWithPageRanges(apiKey, base64, pageCount, systemPrompt, label, setProgress, options = {}) {
+  const batchSize = options.dense ? PDF_DENSE_PAGE_BATCH_SIZE : PDF_PAGE_BATCH_SIZE
+  const ranges = buildPdfPageRanges(pageCount, batchSize)
+  if (ranges.length === 0) return { data: [], truncated: false }
+
+  const collected = []
+  const failed = []
+  let wasTruncated = false
+
+  for (let i = 0; i < ranges.length; i++) {
+    const range = ranges[i]
+    const prefix = `${label} ${range.start}-${range.end}쪽 (${i + 1}/${ranges.length})`
+    try {
+      const raw = await extractWithGemini(
+        apiKey,
+        [
+          { inline_data: { mime_type: 'application/pdf', data: base64 } },
+          { text: buildPdfRangeInstruction(options.extractType, range, pageCount, options.dense) },
+        ],
+        systemPrompt,
+        (msg) => setProgress(`${prefix} · ${msg.replace(/^☁️\s*/, '')}`),
+        { maxOutputTokens: GEMINI_CHUNK_OUTPUT_TOKENS }
+      )
+      const { data, truncated } = repairJSON(raw)
+      if (Array.isArray(data)) collected.push(...data)
+      wasTruncated = wasTruncated || truncated
+    } catch (e) {
+      failed.push({ range, message: e.message })
+      console.warn(`PDF ${range.start}-${range.end}쪽 추출 실패`, e)
+      if (failed.length > Math.max(1, Math.ceil(ranges.length * 0.35))) {
+        throw new Error(`PDF 구간 ${failed.length}개 분석에 실패했습니다. PDF를 단원별로 나눠 다시 시도해주세요.`)
+      }
+    }
+  }
+
+  if (collected.length === 0 && failed.length > 0) {
+    throw new Error('모든 PDF 구간 분석에 실패했습니다. PDF를 단원별로 나눠 다시 시도해주세요.')
+  }
+
+  return {
+    data: mergeExtractedCards(collected),
+    truncated: wasTruncated || failed.length > 0,
+  }
+}
+
 const TYPE_META = {
   new:      { label: '새 카드',     color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: '#22c55e' },
   upgrade:  { label: '내용 보강',   color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: '#f59e0b' },
@@ -783,10 +835,51 @@ function buildPdfInstruction(extractType, dense = false) {
       ? '이 PDF에서 판례명·사건번호·쟁점·판시사항·결론을 찾아 판례 요지 카드를 만드세요. 판례가 아닌 일반 설명은 출력하지 않습니다.'
       : extractType === 'statute'
         ? '이 PDF에서 조문 번호·요건·효과·예외·기간·절차를 찾아 조문 암기 카드를 만드세요. 조문과 직접 관련 없는 일반 설명은 출력하지 않습니다.'
-        : '이 PDF는 한국 법학 두문자 자료입니다. 위에서부터 한 단원씩 순차 처리하며, 대제목【 】은 part 값(점 제거)으로, 점·꺽쇠·+로 분리된 패턴만 mnemonic으로, 줄바꿈으로 끊긴 풀이는 같은 소단원이면 1장의 카드로 묶어 처리하세요. mnemonic·detail 모두 채울 수 있는 카드만 출력합니다.'
+        : extractType === 'qa'
+          ? '이 PDF에서 시험에 나올 핵심 개념·요건·효과·예외·비교 포인트를 Q&A 카드로 빠짐없이 만드세요. 대제목【 】은 part 값(점 제거)으로 쓰고, 한 카드에는 한 쟁점만 담으세요. question·answer 모두 채울 수 있는 카드만 출력합니다.'
+          : '이 PDF는 한국 법학 두문자 자료입니다. 위에서부터 한 단원씩 순차 처리하며, 대제목【 】은 part 값(점 제거)으로, 점·꺽쇠·+로 분리된 패턴만 mnemonic으로, 줄바꿈으로 끊긴 풀이는 같은 소단원이면 1장의 카드로 묶어 처리하세요. mnemonic·detail 모두 채울 수 있는 카드만 출력합니다.'
   return dense
     ? `더 촘촘히 재추출합니다. ${core} 이미 나온 카드와 겹쳐도 누락 방지가 우선입니다. 출력은 JSON 배열만 반환하세요.`
     : `${core} 출력은 JSON 배열만 반환하세요.`
+}
+
+function estimatePdfPageCountFromBytes(bytes) {
+  if (!bytes || !bytes.length) return 0
+  let text = ''
+  const chunkSize = 32768
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    text += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)))
+  }
+  return (text.match(/\/Type\s*\/Page\b/g) || []).length
+}
+
+async function estimatePdfPageCount(file) {
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    return estimatePdfPageCountFromBytes(bytes)
+  } catch {
+    return 0
+  }
+}
+
+function buildPdfPageRanges(pageCount, batchSize) {
+  const total = Number(pageCount) || 0
+  if (total <= 0) return []
+  const size = Math.max(1, Number(batchSize) || PDF_PAGE_BATCH_SIZE)
+  const ranges = []
+  for (let start = 1; start <= total; start += size) {
+    ranges.push({ start, end: Math.min(total, start + size - 1) })
+  }
+  return ranges
+}
+
+function buildPdfRangeInstruction(extractType, range, totalPages, dense = false) {
+  const base = buildPdfInstruction(extractType, dense)
+  return `${base}
+
+이번 요청에서는 첨부된 전체 PDF 중 실제 PDF ${range.start}쪽부터 ${range.end}쪽까지만 처리하세요.
+${range.start}쪽 이전과 ${range.end}쪽 이후 내용은 보이더라도 절대 출력하지 마세요.
+총 ${totalPages}쪽 문서를 여러 번 나누어 추출하는 중이므로, 이 구간 안의 카드만 JSON 배열로 반환하세요.`
 }
 
 function DataListInput({ id, value, onChange, placeholder, style, options }) {
@@ -1183,6 +1276,31 @@ export default function ExtractPage({ cards, onImport }) {
     }
   }, [geminiKey, extractType, finishExtraction])
 
+  const runPdfRangeExtraction = useCallback(async (base64, label, pageCount, options = {}) => {
+    setStatus('loading'); setErrorMsg(''); setTruncated(false); setDroppedCount(0)
+    if (!options.mergeBase) { setExtracted([]); setSelected(new Set()) }
+    try {
+      const ranges = buildPdfPageRanges(pageCount, options.dense ? PDF_DENSE_PAGE_BATCH_SIZE : PDF_PAGE_BATCH_SIZE)
+      setProgress(`${label}${options.dense ? ' 더 촘촘히 재추출' : ''} · ${pageCount}쪽을 ${ranges.length}개 구간으로 나누는 중...`)
+      const prompt = buildPrompt(extractType, options.dense)
+      if (!geminiKey) throw new Error("Gemini API 키가 필수입니다.")
+
+      const { data: parsed, truncated: wasTruncated } = await extractPdfWithPageRanges(
+        geminiKey,
+        base64,
+        pageCount,
+        prompt,
+        label,
+        setProgress,
+        { dense: options.dense, extractType }
+      )
+      finishExtraction(parsed, wasTruncated, { mergeBase: options.mergeBase })
+    } catch (e) {
+      setErrorMsg(e.message)
+      setStatus('error')
+    }
+  }, [geminiKey, extractType, finishExtraction])
+
   const handleFile = useCallback(async (f) => {
     if (!geminiKey) return
     setFile(f)
@@ -1205,15 +1323,20 @@ export default function ExtractPage({ cards, onImport }) {
       setLastSource({ kind: 'text', label: f.name, text })
       await runTextExtraction(text, f.name)
     } else {
+      const pageCount = await estimatePdfPageCount(f)
       const base64 = await readBase64(f)
-      setLastSource({ kind: 'pdf', label: f.name, file: f })
+      setLastSource({ kind: 'pdf', label: f.name, file: f, pageCount })
+      if (pageCount > PDF_DIRECT_PAGE_LIMIT) {
+        await runPdfRangeExtraction(base64, f.name, pageCount)
+        return
+      }
       const geminiPayload = [
         { inline_data: { mime_type: 'application/pdf', data: base64 } },
         { text: buildPdfInstruction(extractType, false) },
       ]
       await runExtraction(geminiPayload, f.name)
     }
-  }, [geminiKey, runExtraction, runTextExtraction])
+  }, [geminiKey, extractType, runExtraction, runTextExtraction, runPdfRangeExtraction])
 
   const handleTextSubmit = useCallback(async () => {
     const trimmed = textInput.trim();
@@ -1232,12 +1355,17 @@ export default function ExtractPage({ cards, onImport }) {
     }
     if (lastSource.kind === 'pdf' && lastSource.file) {
       const base64 = await readBase64(lastSource.file)
+      const pageCount = lastSource.pageCount || await estimatePdfPageCount(lastSource.file)
+      if (pageCount > PDF_DIRECT_PAGE_LIMIT) {
+        await runPdfRangeExtraction(base64, lastSource.label || lastSource.file.name || 'PDF', pageCount, { dense: true, mergeBase })
+        return
+      }
       await runExtraction([
         { inline_data: { mime_type: 'application/pdf', data: base64 } },
         { text: buildPdfInstruction(extractType, true) },
       ], lastSource.label || lastSource.file.name || 'PDF', { dense: true, mergeBase })
     }
-  }, [lastSource, extracted, runExtraction, runTextExtraction])
+  }, [lastSource, extracted, extractType, runExtraction, runTextExtraction, runPdfRangeExtraction])
 
   const toggle = (i) => setSelected((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
 
@@ -1401,7 +1529,7 @@ export default function ExtractPage({ cards, onImport }) {
               <input ref={inputRef} type="file" accept=".pdf,.txt" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) handleFile(f) }} />
               <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
               <div style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.6, wordBreak: 'keep-all' }}>PDF, TXT 파일을 드래그하거나<br /><span style={{ color: '#818cf8', fontWeight: 600 }}>클릭하여 탐색기 열기</span></div>
-              <div style={{ color: '#475569', fontSize: 11, marginTop: 10, lineHeight: 1.6, wordBreak: 'keep-all' }}>TXT는 자동 분할 분석 · PDF는 단원 단위 업로드 권장 (최대 {MAX_FILE_MB}MB) · Word는 PDF로 변환 후 업로드</div>
+              <div style={{ color: '#475569', fontSize: 11, marginTop: 10, lineHeight: 1.6, wordBreak: 'keep-all' }}>TXT/PDF 자동 분할 분석 · PDF 최대 {MAX_FILE_MB}MB · Word는 PDF로 변환 후 업로드</div>
             </div>
           ) : (
             <div style={{ width: '100%', boxSizing: 'border-box' }}>
