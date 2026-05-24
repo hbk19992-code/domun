@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react'
 import { isDue, dueLabel } from '../utils/srs'
 import { useTTS, ttsMnemonic, ttsDetail } from '../hooks/useTTS'
 import { useCloudSRS } from '../hooks/useCloudSRS'
-import { answerLabel, cardKindLabel, getCardKind, isAnswerCard } from '../utils/cardType'
+import { answerLabel, cardKindLabel, getCardKind, isAnswerCard, isCivilRecordGradingCard } from '../utils/cardType'
 import { gradeAnswer } from '../utils/grading'
 
 const STATUS = {
@@ -53,6 +53,8 @@ const S = {
       borderRadius: 20, padding: '34px 26px', minHeight: 230, cursor: 'pointer',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       textAlign: 'center', userSelect: 'none', marginBottom: 14,
+      transition: 'background 0.22s ease, border-color 0.22s ease, transform 0.22s ease',
+      transform: flipped ? 'translateY(-1px)' : 'translateY(0)',
     }
   },
   badge: {
@@ -182,6 +184,13 @@ export default function StudyPage({ cards }) {
   const handleStatus = (result) => {
     if (!card) return
     review(card, result)
+    if (listenMode) {
+      stop()
+      setPlaying(false)
+      setFlipped(false)
+      setTimeout(() => setIdx((i) => Math.min(deck.length - 1, i + 1)), 180)
+      return
+    }
     setTimeout(() => { setFlipped(false); setIdx((i) => Math.min(deck.length - 1, i + 1)) }, 280)
   }
 
@@ -323,6 +332,7 @@ export default function StudyPage({ cards }) {
       {card && <CardWithEdit card={card} flipped={flipped} setFlipped={setFlipped} entryOf={entryOf}
         handleStatus={handleStatus} updateCard={cards.updateCard}
         subjects={cards?.subjects || []} getParts={cards?.parts}
+        listening={listenMode}
         answerInput={answerInputs[getCardKey(card)] || ''}
         onAnswerInputChange={(value) => {
           const key = getCardKey(card)
@@ -340,11 +350,13 @@ export default function StudyPage({ cards }) {
   )
 }
 
-function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard, subjects = [], getParts, answerInput = '', onAnswerInputChange }) {
+function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard, subjects = [], getParts, listening = false, answerInput = '', onAnswerInputChange }) {
   const [editOpen, setEditOpen] = useState(false)
   const [draft, setDraft] = useState(card)
   const kind = getCardKind(card)
   const isAnswer = isAnswerCard(card)
+  const isGrading = isCivilRecordGradingCard(card)
+  const showGrading = isGrading && !listening
   const canEdit = !!card.id
   const cardKey = card.id ?? card.question
 
@@ -376,7 +388,7 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
 
   return (
     <>
-      {isAnswer ? (
+      {showGrading ? (
         <FillInAnswerCard
           card={card}
           cardKey={cardKey}
@@ -390,8 +402,17 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
           <div style={S.question}>{card.question}</div>
           {flipped ? (
             <>
-              <div style={S.mnemonic}>{card.mnemonic}</div>
-              <div style={S.detail}>{card.detail}</div>
+              {isAnswer ? (
+                <>
+                  {card.mnemonic && <div style={{ ...S.mnemonic, fontSize: 18, letterSpacing: 0 }}>{card.mnemonic}</div>}
+                  <div style={{ ...S.detail, fontSize: 15, color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>{card.answer}</div>
+                </>
+              ) : (
+                <>
+                  <div style={S.mnemonic}>{card.mnemonic}</div>
+                  <div style={S.detail}>{card.detail}</div>
+                </>
+              )}
               {entryOf(card) && (
                 <div style={S.dueTag}>다음 복습: {dueLabel(entryOf(card))} · {entryOf(card).count}회 학습</div>
               )}

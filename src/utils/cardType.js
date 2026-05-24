@@ -15,6 +15,17 @@ export function isAnswerCard(card = {}) {
   return getCardKind(card) !== 'mnemonic'
 }
 
+export function isCivilRecordGradingCard(card = {}) {
+  if (!isAnswerCard(card) || !clean(card.answer)) return false
+
+  const subject = clean(card.subject)
+  const part = clean(card.part)
+  const scope = `${subject} ${part}`.replace(/\s/g, '')
+  if (/민기록|민사기록|민사기록형/.test(scope)) return true
+
+  return /^DT\d*/i.test(part.replace(/\s/g, '')) && /민/.test(subject)
+}
+
 export function cardKindLabel(cardOrKind = {}) {
   const kind = typeof cardOrKind === 'string' ? cardOrKind : getCardKind(cardOrKind)
   if (kind === 'case') return '판례'
