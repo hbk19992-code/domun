@@ -85,7 +85,10 @@ const PDF_RANGE_DELAY_MS = 2500
 const PDF_DENSE_RANGE_DELAY_MS = 4000
 const PDF_RANGE_LONG_PAUSE_EVERY = 5
 const PDF_RANGE_LONG_PAUSE_MS = 12000
-const EXTRACTOR_VERSION_LABEL = '번호 PDF 안정화 v2 · 2026-05-23'
+const PDF_TEXT_MIN_CHARS = 120
+const PDFJS_ESM_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs'
+const PDFJS_WORKER_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs'
+const EXTRACTOR_VERSION_LABEL = 'PDF 텍스트 우선 추출 v3 · 2026-05-24'
 
 function makeExtractionBatchId() {
   return `extract_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -104,6 +107,9 @@ function friendlyExtractionError(error) {
   const message = String(error?.message || '')
   if (/PDF 구간 \d+개 분석에 실패했습니다/.test(message) || message.includes('PDF를 단원별로 나눠')) {
     return '이전 버전 추출 오류가 감지되었습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요. 최신 버전에서는 실패한 일부 구간이 있어도 성공한 결과를 먼저 보여줍니다.'
+  }
+  if (message === 'Load failed' || message.includes('Load failed')) {
+    return 'Gemini가 이 PDF 파일을 직접 읽지 못했습니다. 최신 버전은 PDF 텍스트를 먼저 추출해 시도합니다. 이 문구가 계속 보이면 페이지 새로고침 후 다시 올려 주세요.'
   }
   return message
 }
@@ -988,6 +994,51 @@ async function estimatePdfPageCount(file) {
   }
 }
 
+async function loadPdfJs() {
+  const pdfjsLib = await import(/* @vite-ignore */ PDFJS_ESM_URL)
+  if (pdfjsLib?.GlobalWorkerOptions) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL
+  }
+  return pdfjsLib
+}
+
+function normalizePdfText(text) {
+  return String(text || '')
+    .replace(/\u0000/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+async function extractPdfTextWithPdfJs(file, onProgress) {
+  const pdfjsLib = await loadPdfJs()
+  const data = new Uint8Array(await file.arrayBuffer())
+  const loadingTask = pdfjsLib.getDocument({
+    data,
+    disableFontFace: true,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  })
+  const pdf = await loadingTask.promise
+  const pages = []
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    if (typeof onProgress === 'function') onProgress(`${file.name} 텍스트 추출 중... (${pageNum}/${pdf.numPages})`)
+    const page = await pdf.getPage(pageNum)
+    const content = await page.getTextContent()
+    const text = content.items
+      .map((item) => ('str' in item ? item.str : ''))
+      .filter(Boolean)
+      .join(' ')
+    pages.push(`\n\n[PDF ${pageNum}쪽]\n${text}`)
+  }
+
+  return {
+    pageCount: pdf.numPages || 0,
+    text: normalizePdfText(pages.join('\n')),
+  }
+}
+
 function buildPdfPageRanges(pageCount, batchSize) {
   const total = Number(pageCount) || 0
   if (total <= 0) return []
@@ -1459,7 +1510,28 @@ export default function ExtractPage({ cards, onImport }) {
       setLastSource({ kind: 'text', label: f.name, text })
       await runTextExtraction(text, f.name)
     } else {
-      const pageCount = await estimatePdfPageCount(f)
+      const estimatedPageCount = await estimatePdfPageCount(f)
+      try {
+        setStatus('loading')
+        setProgress(`${f.name} PDF 텍스트 확인 중...`)
+        const extractedPdfText = await extractPdfTextWithPdfJs(f, setProgress)
+        if (extractedPdfText.text.length >= PDF_TEXT_MIN_CHARS) {
+          const label = `${f.name} PDF 텍스트`
+          setLastSource({
+            kind: 'text',
+            label,
+            text: extractedPdfText.text,
+            file: f,
+            pageCount: extractedPdfText.pageCount || estimatedPageCount,
+          })
+          await runTextExtraction(extractedPdfText.text, label)
+          return
+        }
+      } catch (e) {
+        console.warn('PDF 텍스트 추출 실패, Gemini PDF 직접 분석으로 전환', e)
+      }
+
+      const pageCount = estimatedPageCount
       const base64 = await readBase64(f)
       setLastSource({ kind: 'pdf', label: f.name, file: f, pageCount })
       if (pageCount > PDF_DIRECT_PAGE_LIMIT) {
@@ -1666,7 +1738,7 @@ export default function ExtractPage({ cards, onImport }) {
               <input ref={inputRef} type="file" accept=".pdf,.txt" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) handleFile(f) }} />
               <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
               <div style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.6, wordBreak: 'keep-all' }}>PDF, TXT 파일을 드래그하거나<br /><span style={{ color: '#818cf8', fontWeight: 600 }}>클릭하여 탐색기 열기</span></div>
-              <div style={{ color: '#475569', fontSize: 11, marginTop: 10, lineHeight: 1.6, wordBreak: 'keep-all' }}>TXT/PDF 자동 분할 분석 · PDF 최대 {MAX_FILE_MB}MB · Word는 PDF로 변환 후 업로드</div>
+              <div style={{ color: '#475569', fontSize: 11, marginTop: 10, lineHeight: 1.6, wordBreak: 'keep-all' }}>TXT/PDF 텍스트 우선 분석 · PDF 최대 {MAX_FILE_MB}MB · Word는 PDF로 변환 후 업로드</div>
             </div>
           ) : (
             <div style={{ width: '100%', boxSizing: 'border-box' }}>
