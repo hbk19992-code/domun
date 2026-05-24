@@ -4,6 +4,7 @@ import { useTTS, ttsMnemonic, ttsDetail } from '../hooks/useTTS'
 import { useCloudSRS } from '../hooks/useCloudSRS'
 import { answerLabel, cardKindLabel, getCardKind, isAnswerCard, isCivilRecordGradingCard } from '../utils/cardType'
 import { gradeAnswer } from '../utils/grading'
+import { getTopCategory, matchesTopCategory } from '../utils/classification'
 
 const STATUS = {
   unknown: { label: '모름',   emoji: '✗', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
@@ -122,7 +123,8 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
 }
 
 export default function StudyPage({ cards }) {
-  const { allCards, subjects } = cards
+  const { allCards, topCategories = [], subjects, subjectsForTop } = cards
+  const [topCategory, setTopCategory] = useState('전체')
   const [subject, setSubject] = useState('전체')
   const [part, setPart] = useState('전체')
   const [statusFilter, setStatusFilter] = useState('전체')
@@ -147,17 +149,23 @@ export default function StudyPage({ cards }) {
 
   const entryOf = useCallback((card) => srs[getCardKey(card)], [srs])
 
+  const subjectOptions = useMemo(() => {
+    if (typeof subjectsForTop === 'function') return subjectsForTop(topCategory)
+    return subjects
+  }, [subjects, subjectsForTop, topCategory])
+
   const partOptions = useMemo(() => {
-    const base = subject === '전체' ? allCards : allCards.filter((x) => x.subject === subject)
+    const scopedTop = allCards.filter((x) => matchesTopCategory(x, topCategory))
+    const base = subject === '전체' ? scopedTop : scopedTop.filter((x) => x.subject === subject)
     return [...new Set(base.map((x) => x.part))]
-  }, [allCards, subject])
+  }, [allCards, subject, topCategory])
 
   const scoped = useMemo(() => {
-    let c = allCards
+    let c = allCards.filter((x) => matchesTopCategory(x, topCategory))
     if (subject !== '전체') c = c.filter((x) => x.subject === subject)
     if (part !== '전체') c = c.filter((x) => x.part === part)
     return c
-  }, [allCards, subject, part])
+  }, [allCards, topCategory, subject, part])
 
   const dueCards = useMemo(() => scoped.filter((c) => isDue(srs[getCardKey(c)])), [scoped, srs])
 
@@ -219,6 +227,21 @@ export default function StudyPage({ cards }) {
   const togglePlay = () => { if (playing) { setPlaying(false); stop() } else setPlaying(true) }
   const exitListen = () => { setPlaying(false); stop(); setListenMode(false) }
 
+  useEffect(() => {
+    if (subject !== '전체' && !subjectOptions.includes(subject)) {
+      setSubject('전체')
+      setPart('전체')
+      resetView()
+    }
+  }, [subject, subjectOptions])
+
+  useEffect(() => {
+    if (part !== '전체' && !partOptions.includes(part)) {
+      setPart('전체')
+      resetView()
+    }
+  }, [part, partOptions])
+
   if (allCards.length === 0) {
     return (
       <div style={S.empty}>
@@ -275,10 +298,15 @@ export default function StudyPage({ cards }) {
       )}
 
       <div style={S.filters}>
+        <select style={S.select} value={topCategory}
+          onChange={(e) => { setTopCategory(e.target.value); setSubject('전체'); setPart('전체'); resetView() }}>
+          <option>전체</option>
+          {topCategories.map((value) => <option key={value}>{value}</option>)}
+        </select>
         <select style={S.select} value={subject}
           onChange={(e) => { setSubject(e.target.value); setPart('전체'); resetView() }}>
           <option>전체</option>
-          {subjects.map((s) => <option key={s}>{s}</option>)}
+          {subjectOptions.map((s) => <option key={s}>{s}</option>)}
         </select>
         <select style={S.select} value={part} onChange={(e) => { setPart(e.target.value); resetView() }}>
           <option>전체</option>
@@ -331,7 +359,7 @@ export default function StudyPage({ cards }) {
 
       {card && <CardWithEdit card={card} flipped={flipped} setFlipped={setFlipped} entryOf={entryOf}
         handleStatus={handleStatus} updateCard={cards.updateCard}
-        subjects={cards?.subjects || []} getParts={cards?.parts}
+        topCategories={topCategories} subjects={cards?.subjects || []} getParts={cards?.parts}
         listening={listenMode}
         answerInput={answerInputs[getCardKey(card)] || ''}
         onAnswerInputChange={(value) => {
@@ -350,7 +378,7 @@ export default function StudyPage({ cards }) {
   )
 }
 
-function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard, subjects = [], getParts, listening = false, answerInput = '', onAnswerInputChange }) {
+function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard, topCategories = [], subjects = [], getParts, listening = false, answerInput = '', onAnswerInputChange }) {
   const [editOpen, setEditOpen] = useState(false)
   const [draft, setDraft] = useState(card)
   const kind = getCardKind(card)
@@ -363,6 +391,7 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
   let safeParts = []
   try { if (typeof getParts === 'function') { const r = getParts(draft?.subject || ''); if (Array.isArray(r)) safeParts = r } } catch(e) {}
   const safeSubjects = Array.isArray(subjects) ? subjects : []
+  const safeTopCategories = Array.isArray(topCategories) ? topCategories : []
 
   const handleSave = () => { updateCard(card.id, draft); setEditOpen(false) }
 
@@ -373,6 +402,11 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
       padding: '8px 10px', color: '#e2e8f0', fontSize: 13,
       fontFamily: 'inherit', outline: 'none', marginBottom: 6,
       resize: multi ? 'vertical' : 'none',
+    }
+    if (!multi && key === 'topCategory') {
+      return <DataListInput id={`study-${key}-${cardKey}`} value={getTopCategory(draft)}
+        onChange={(e) => setDraft({ ...draft, topCategory: e.target.value })}
+        placeholder={placeholder} style={style} options={safeTopCategories} />
     }
     if (!multi && (key === 'subject' || key === 'part')) {
       return <DataListInput id={`study-${key}-${cardKey}`} value={draft[key]}
@@ -398,7 +432,7 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
       ) : (
         <div style={S.card(flipped, flipped ? entryOf(card)?.status : null)}
           onClick={() => !editOpen && setFlipped((f) => !f)}>
-          <div style={S.badge}>{card.subject} · {card.part}{card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(kind)}</div>
+          <div style={S.badge}>{getTopCategory(card)} · {card.subject} · {card.part}{card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(kind)}</div>
           <div style={S.question}>{card.question}</div>
           {flipped ? (
             <>
@@ -448,7 +482,7 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
       {editOpen && (
         <div style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid #334155', borderRadius: 16, padding: 18, marginBottom: 14 }}>
           <div style={{ color: '#94a3b8', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>카드 편집</div>
-          <div style={{ display: 'flex', gap: 6 }}>{inp('subject', '과목')}{inp('part', '단원')}</div>
+          <div style={{ display: 'flex', gap: 6 }}>{inp('topCategory', '대분류')}{inp('subject', '과목')}{inp('part', '단원')}</div>
           {inp('sourceNumber', '원문 번호')}
           {inp('question', '질문')}
           {isAnswer ? inp('answer', answerLabel(kind), true) : <>{inp('mnemonic', '두문자')}{inp('detail', '설명', true)}</>}
@@ -497,7 +531,7 @@ function FillInAnswerCard({ card, cardKey, value, onChange }) {
       overflow: 'hidden',
     }}>
       <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid #1e293b' }}>
-        <div style={S.badge}>{card.subject} · {card.part}{card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(card)}</div>
+        <div style={S.badge}>{getTopCategory(card)} · {card.subject} · {card.part}{card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(card)}</div>
         <div style={{ ...S.question, marginBottom: card.mnemonic ? 8 : 0 }}>{card.question}</div>
         {card.mnemonic && (
           <div style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700, lineHeight: 1.5 }}>

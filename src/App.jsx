@@ -113,11 +113,14 @@ export default function App() {
   }, [])
 
   const handleShareImport = async () => {
-    const added = await cards.addCards(sharedCards)
-    const skipped = sharedCards.length - added
+    const result = await cards.addCards(sharedCards)
+    const added = typeof result === 'number' ? result : result.added
+    const updated = typeof result === 'number' ? 0 : result.updated
+    const skipped = sharedCards.length - added - updated
     setSharedCards(null)
     clearShareParam()
-    setImportToast(skipped > 0 ? `✓ ${added}개 추가 (중복 ${skipped}개 제외)` : `✓ ${added}개 추가됨`)
+    const updateText = updated > 0 ? ` · 대분류 ${updated}개 보강` : ''
+    setImportToast(skipped > 0 ? `✓ ${added}개 추가${updateText} (중복 ${skipped}개 제외)` : `✓ ${added}개 추가됨${updateText}`)
     setTimeout(() => setImportToast(''), 3000)
     setTab('study')
   }

@@ -1,4 +1,5 @@
 import { answerLabel, isAnswerCard } from './cardType'
+import { getTopCategory } from './classification'
 
 const textEncoder = new TextEncoder()
 
@@ -24,6 +25,7 @@ function normalizeCards(cards) {
     .filter((card) => cleanText(card.question))
     .map((card) => ({
       cardType: cleanText(card.cardType),
+      topCategory: getTopCategory(card),
       subject: cleanText(card.subject) || '미분류',
       part: cleanText(card.part) || '기본',
       sourceNumber: cleanText(card.sourceNumber),
@@ -39,10 +41,10 @@ function groupCards(cards) {
   const index = new Map()
 
   cards.forEach((card) => {
-    const key = `${card.subject}\u0000${card.part}`
+    const key = `${card.topCategory}\u0000${card.subject}\u0000${card.part}`
     if (!index.has(key)) {
       index.set(key, groups.length)
-      groups.push({ subject: card.subject, part: card.part, cards: [] })
+      groups.push({ topCategory: card.topCategory, subject: card.subject, part: card.part, cards: [] })
     }
     groups[index.get(key)].cards.push(card)
   })
@@ -69,7 +71,7 @@ function txtForCards(cards, title = '두문자 카드') {
   ]
 
   groupCards(normalized).forEach((group) => {
-    lines.push(`[${group.subject} / ${group.part}]`, '')
+    lines.push(`[${group.topCategory} / ${group.subject} / ${group.part}]`, '')
     group.cards.forEach((card, idx) => {
       const sourcePrefix = card.sourceNumber ? ` [원문 ${card.sourceNumber}]` : ''
       lines.push(`${idx + 1}.${sourcePrefix} ${card.question}`)
@@ -129,7 +131,7 @@ function cardsXhtml(cards, title = '두문자 카드') {
 
     return `
       <section>
-        <h2>${escapeXml(group.subject)} / ${escapeXml(group.part)}</h2>
+        <h2>${escapeXml(group.topCategory)} / ${escapeXml(group.subject)} / ${escapeXml(group.part)}</h2>
         ${articles}
       </section>
     `

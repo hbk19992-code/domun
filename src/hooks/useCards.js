@@ -5,6 +5,7 @@ import { db, auth, googleProvider } from '../utils/firebase';
 import { builtinCards } from '../data/mnemonics';
 import { isDuplicate } from '../utils/dedup';
 import { exportX4Epub, exportX4Txt } from '../utils/x4Export';
+import { DEFAULT_TOP_CATEGORY, getTopCategory, matchesTopCategory } from '../utils/classification';
 
 const genToken = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 const CACHE_KEY = (uid) => `cards_cache_${uid}`;
@@ -204,20 +205,47 @@ export function useCards() {
   }, [userCards, commitOps]);
 
   const addCards = useCallback(async (incoming) => {
-    if (!uidRef.current) return 0;
+    if (!uidRef.current) return { added: 0, updated: 0 };
     const existing = [...builtinCards, ...userCards];
-    const newCards = incoming.filter((c) => !existing.some((e) => isDuplicate(e, c)));
-    if (newCards.length === 0) return 0;
+    const newCards = [];
+    const topCategoryUpdates = new Map();
+
+    incoming.forEach((card) => {
+      const match = existing.find((e) => isDuplicate(e, card));
+      if (!match) {
+        newCards.push(card);
+        existing.push(card);
+        return;
+      }
+
+      const currentUserCard = userCards.find((c) => c.id && c.id === match.id);
+      const incomingTop = getTopCategory(card);
+      const currentTop = getTopCategory(match);
+      if (currentUserCard && incomingTop !== DEFAULT_TOP_CATEGORY && currentTop === DEFAULT_TOP_CATEGORY) {
+        topCategoryUpdates.set(currentUserCard.id, { ...currentUserCard, topCategory: incomingTop });
+      }
+    });
 
     const cardsToAdd = newCards.map(c => ({ ...c, id: doc(collection(db, 'dummy')).id }));
-    const nextCards = [...userCards, ...cardsToAdd];
+    if (cardsToAdd.length === 0 && topCategoryUpdates.size === 0) return { added: 0, updated: 0 };
 
-    await commitOps(nextCards, () => 
-      cardsToAdd.map(card => ({
+    const nextCards = [
+      ...userCards.map((card) => topCategoryUpdates.get(card.id) || card),
+      ...cardsToAdd
+    ];
+
+    await commitOps(nextCards, () => [
+      ...Array.from(topCategoryUpdates.values()).map(card => ({
+        type: 'set',
+        ref: doc(db, 'users', uidRef.current, 'cards', card.id),
+        data: { topCategory: card.topCategory },
+        options: { merge: true }
+      })),
+      ...cardsToAdd.map(card => ({
         type: 'set', ref: doc(db, 'users', uidRef.current, 'cards', card.id), data: card
       }))
-    );
-    return newCards.length;
+    ]);
+    return { added: cardsToAdd.length, updated: topCategoryUpdates.size };
   }, [userCards, commitOps]);
 
   const updateCard = useCallback(async (id, updated) => {
@@ -267,15 +295,16 @@ export function useCards() {
     ]);
   }, [userCards, commitOps]);
 
-  const deleteBy = useCallback(async ({ subject, part }) => {
+  const deleteBy = useCallback(async ({ topCategory, subject, part }) => {
     if (!uidRef.current) return 0;
     let removed = 0;
     const toDeleteIds = new Set();
     
     userCards.forEach((c) => {
+      const mt = matchesTopCategory(c, topCategory);
       const ms = !subject || subject === '전체' || c.subject === subject;
       const mp = !part || part === '전체' || c.part === part;
-      if (ms && mp) {
+      if (mt && ms && mp) {
         toDeleteIds.add(c.id);
         removed++;
       }
@@ -292,24 +321,31 @@ export function useCards() {
     return removed;
   }, [userCards, commitOps]);
 
-  const countBy = useCallback(({ subject, part }) =>
+  const countBy = useCallback(({ topCategory, subject, part }) =>
     userCards.filter((c) => {
+      const mt = matchesTopCategory(c, topCategory);
       const ms = !subject || subject === '전체' || c.subject === subject;
       const mp = !part || part === '전체' || c.part === part;
-      return ms && mp;
+      return mt && ms && mp;
     }).length
   , [userCards]);
 
-  const renameFolder = useCallback(async ({ oldSubject, oldPart, newSubject, newPart }) => {
+  const renameFolder = useCallback(async ({ oldTopCategory, oldSubject, oldPart, newTopCategory, newSubject, newPart }) => {
     if (!uidRef.current) return 0;
     let updatedCount = 0;
     const updates = [];
 
     const nextCards = userCards.map((c) => {
+      const matchTop = matchesTopCategory(c, oldTopCategory);
       const matchSub = oldSubject === '전체' || c.subject === oldSubject;
       const matchPart = oldPart === '전체' || c.part === oldPart;
-      if (matchSub && matchPart) {
-        const updated = { ...c, subject: newSubject || c.subject, part: newPart || c.part };
+      if (matchTop && matchSub && matchPart) {
+        const updated = {
+          ...c,
+          topCategory: newTopCategory || getTopCategory(c),
+          subject: newSubject || c.subject,
+          part: newPart || c.part
+        };
         updates.push(updated);
         updatedCount++;
         return updated;
@@ -320,7 +356,10 @@ export function useCards() {
     if (updatedCount > 0) {
       await commitOps(nextCards, () => 
         updates.map(card => ({
-          type: 'set', ref: doc(db, 'users', uidRef.current, 'cards', card.id), data: { subject: card.subject, part: card.part }, options: { merge: true }
+          type: 'set',
+          ref: doc(db, 'users', uidRef.current, 'cards', card.id),
+          data: { topCategory: card.topCategory, subject: card.subject, part: card.part },
+          options: { merge: true }
         }))
       );
     }
@@ -383,8 +422,10 @@ export function useCards() {
       try {
         const data = JSON.parse(e.target.result);
         if (!Array.isArray(data)) throw new Error('올바른 JSON 형식이 아닙니다');
-        const added = await addCards(data);
-        resolve({ added, skipped: data.length - added });
+        const result = await addCards(data);
+        const added = typeof result === 'number' ? result : result.added;
+        const updated = typeof result === 'number' ? 0 : result.updated;
+        resolve({ added, updated, skipped: data.length - added - updated });
       } catch (err) { reject(err); }
     }
     reader.onerror = () => reject(new Error('파일 읽기 실패'));
@@ -421,9 +462,21 @@ export function useCards() {
     return count;
   }, [userCards, visibleUserCards]);
 
+  const topCategories = useMemo(() => [...new Set(allCards.map((c) => getTopCategory(c)).filter(Boolean))], [allCards]);
   const subjects = useMemo(() => [...new Set(allCards.map((c) => c.subject).filter(Boolean))], [allCards]);
+  const subjectsForTop = useCallback(
+    (topCategory = '전체') => [...new Set(allCards
+      .filter((c) => matchesTopCategory(c, topCategory))
+      .map((c) => c.subject)
+      .filter(Boolean))],
+    [allCards]
+  );
   const parts = useCallback(
-    (subject) => [...new Set(allCards.filter((c) => c.subject === subject).map((c) => c.part).filter(Boolean))],
+    (subject, topCategory = '전체') => [...new Set(allCards
+      .filter((c) => matchesTopCategory(c, topCategory))
+      .filter((c) => c.subject === subject)
+      .map((c) => c.part)
+      .filter(Boolean))],
     [allCards]
   );
 
@@ -433,7 +486,7 @@ export function useCards() {
     addCard, addCards, deleteCard, updateCard, updateCardsByIds,
     moveCard: () => {}, reorderCard: () => {}, deleteBy, countBy, renameFolder,
     exportJSON, exportX4TXT, exportX4EPUB, importJSON, deduplicateSelf, duplicateCount,
-    subjects, parts,
+    topCategories, subjects, subjectsForTop, parts,
     isAnonymous, userEmail, loginWithGoogle, handleLogout
   };
 }

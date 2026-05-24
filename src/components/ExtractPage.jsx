@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect, useId } from 'react'
 import { isDuplicate, normQuestion } from '../utils/dedup'
 import { answerLabel, cardKindLabel, getCardKind, isAnswerCard } from '../utils/cardType'
+import { DEFAULT_TOP_CATEGORY, getTopCategory, matchesTopCategory } from '../utils/classification'
 
 function classifyCard(card, allCards) {
   if (!allCards || !Array.isArray(allCards)) return { type: 'new', match: null }
@@ -792,6 +793,7 @@ function sanitizeCard(card) {
   const sourceNumber = getCardSourceNumber(card)
   return {
     ...card,
+    topCategory: getTopCategory(card),
     subject: cleanSubjectLabel(card.subject),
     part: cleanPartLabel(card.part),
     ...(sourceNumber ? { sourceNumber } : {}),
@@ -924,6 +926,7 @@ function isUnclassified(value) {
 function getReviewIssues(card) {
   const issues = []
   const isAnswer = isAnswerCard(card)
+  if (isUnclassified(getTopCategory(card))) issues.push('대분류 확인')
   if (isUnclassified(card?.subject)) issues.push('과목 확인')
   if (isUnclassified(card?.part)) issues.push('단원 확인')
   if (!String(card?.question || '').trim()) issues.push('질문 없음')
@@ -940,7 +943,7 @@ function getReviewIssues(card) {
 function matchesReviewFilter(card, filter) {
   if (filter === 'all') return true
   if (filter === 'needsReview') return getReviewIssues(card).length > 0
-  if (filter === 'unclassified') return isUnclassified(card?.subject) || isUnclassified(card?.part)
+  if (filter === 'unclassified') return isUnclassified(getTopCategory(card)) || isUnclassified(card?.subject) || isUnclassified(card?.part)
   if (filter === 'missingCore') return getReviewIssues(card).some((x) => x.includes('없음'))
   if (filter === 'mnemonic') return getCardKind(card) === 'mnemonic'
   if (filter === 'qa') return getCardKind(card) === 'qa'
@@ -1073,44 +1076,49 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
   )
 }
 
-function GroupRow({ group, onApply, subjects, getParts }) {
+function GroupRow({ group, onApply, topCategories, subjects, getParts }) {
   const uid = useId()
+  const [draftTop, setDraftTop] = useState(group.topCategory === '미분류' ? '' : group.topCategory)
   const [draftSubj, setDraftSubj] = useState(group.subject === '미분류' ? '' : group.subject)
   const [draftPart, setDraftPart] = useState(group.part === '미분류' ? '' : group.part)
 
   useEffect(() => {
+    setDraftTop(group.topCategory === '미분류' ? '' : group.topCategory)
     setDraftSubj(group.subject === '미분류' ? '' : group.subject)
     setDraftPart(group.part === '미분류' ? '' : group.part)
   }, [group])
 
-  const changed = draftSubj !== (group.subject === '미분류' ? '' : group.subject) ||
+  const changed = draftTop !== (group.topCategory === '미분류' ? '' : group.topCategory) ||
+                  draftSubj !== (group.subject === '미분류' ? '' : group.subject) ||
                   draftPart !== (group.part === '미분류' ? '' : group.part)
 
-  const safeParts = typeof getParts === 'function' ? (getParts(draftSubj) || []) : []
+  const safeParts = typeof getParts === 'function' ? (getParts(draftSubj, draftTop || '전체') || []) : []
   const inputStyle = { width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '10px 12px', color: '#e2e8f0', fontSize: 13, outline: 'none', minWidth: 0 }
 
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'rgba(15,23,42,0.6)', padding: '12px 16px', borderRadius: 12, marginBottom: 8, border: '1px solid #1e293b' }}>
       <div style={{ flex: 1, display: 'flex', gap: 8, flexWrap: 'nowrap' }}>
+        <DataListInput id={`ge-top-${uid}`} value={draftTop} onChange={e => setDraftTop(e.target.value)} placeholder="대분류" style={inputStyle} options={topCategories} />
         <DataListInput id={`ge-sub-${uid}`} value={draftSubj} onChange={e => setDraftSubj(e.target.value)} placeholder="과목" style={inputStyle} options={subjects} />
         <DataListInput id={`ge-part-${uid}`} value={draftPart} onChange={e => setDraftPart(e.target.value)} placeholder="단원" style={inputStyle} options={safeParts} />
       </div>
       <div style={{ width: 44, textAlign: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 700 }}>{group.count}장</div>
-      <button onClick={() => { if (changed) onApply(group.subject, group.part, draftSubj, draftPart) }} disabled={!changed} style={{ background: changed ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b', color: changed ? '#fff' : '#64748b', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, cursor: changed ? 'pointer' : 'not-allowed', fontWeight: 700, flexShrink: 0 }}>적용</button>
+      <button onClick={() => { if (changed) onApply(group.topCategory, group.subject, group.part, draftTop, draftSubj, draftPart) }} disabled={!changed} style={{ background: changed ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b', color: changed ? '#fff' : '#64748b', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, cursor: changed ? 'pointer' : 'not-allowed', fontWeight: 700, flexShrink: 0 }}>적용</button>
     </div>
   )
 }
 
-function GroupEditorPanel({ extracted, onUpdateGroup, subjects, getParts }) {
+function GroupEditorPanel({ extracted, onUpdateGroup, topCategories, subjects, getParts }) {
   const [open, setOpen] = useState(true)
 
   const groups = useMemo(() => {
     const map = new Map()
     extracted.forEach(c => {
+      const top = getTopCategory(c) || '미분류'
       const subj = c.subject || '미분류'
       const pt = c.part || '미분류'
-      const key = `${subj}|||${pt}`
-      if (!map.has(key)) map.set(key, { subject: subj, part: pt, count: 0 })
+      const key = `${top}|||${subj}|||${pt}`
+      if (!map.has(key)) map.set(key, { topCategory: top, subject: subj, part: pt, count: 0 })
       map.get(key).count++
     })
     return Array.from(map.values()).sort((a, b) => b.count - a.count)
@@ -1131,7 +1139,7 @@ function GroupEditorPanel({ extracted, onUpdateGroup, subjects, getParts }) {
         <div style={{ marginTop: 20 }}>
           <div style={{ maxHeight: 320, overflowY: 'auto', paddingRight: 4 }}>
             {groups.map(g => (
-              <GroupRow key={`${g.subject}|||${g.part}`} group={g} onApply={onUpdateGroup} subjects={subjects} getParts={getParts} />
+              <GroupRow key={`${g.topCategory}|||${g.subject}|||${g.part}`} group={g} onApply={onUpdateGroup} topCategories={topCategories} subjects={subjects} getParts={getParts} />
             ))}
           </div>
         </div>
@@ -1140,17 +1148,19 @@ function GroupEditorPanel({ extracted, onUpdateGroup, subjects, getParts }) {
   )
 }
 
-function SelectedBatchPanel({ selectedCount, onApply, subjects, getParts }) {
+function SelectedBatchPanel({ selectedCount, onApply, topCategories, subjects, getParts }) {
   const uid = useId()
+  const [draftTop, setDraftTop] = useState('')
   const [draftSubj, setDraftSubj] = useState('')
   const [draftPart, setDraftPart] = useState('')
-  const safeParts = typeof getParts === 'function' ? (getParts(draftSubj) || []) : []
-  const canApply = selectedCount > 0 && (!!draftSubj.trim() || !!draftPart.trim())
+  const safeParts = typeof getParts === 'function' ? (getParts(draftSubj, draftTop || '전체') || []) : []
+  const canApply = selectedCount > 0 && (!!draftTop.trim() || !!draftSubj.trim() || !!draftPart.trim())
   const inputStyle = { width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '10px 12px', color: '#e2e8f0', fontSize: 13, outline: 'none', minWidth: 0 }
 
   const apply = () => {
     if (!canApply) return
-    onApply({ subject: draftSubj, part: draftPart })
+    onApply({ topCategory: draftTop, subject: draftSubj, part: draftPart })
+    setDraftTop('')
     setDraftSubj('')
     setDraftPart('')
   }
@@ -1160,10 +1170,11 @@ function SelectedBatchPanel({ selectedCount, onApply, subjects, getParts }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
         <div>
           <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 800, marginBottom: 5 }}>선택 카드 일괄 변경</div>
-          <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.55 }}>선택된 {selectedCount}장의 과목/단원을 한 번에 맞춥니다. 빈칸은 기존 값을 유지합니다.</div>
+          <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.55 }}>선택된 {selectedCount}장의 대분류/과목/단원을 한 번에 맞춥니다. 빈칸은 기존 값을 유지합니다.</div>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <DataListInput id={`sel-top-${uid}`} value={draftTop} onChange={e => setDraftTop(e.target.value)} placeholder="새 대분류" style={inputStyle} options={topCategories} />
         <DataListInput id={`sel-sub-${uid}`} value={draftSubj} onChange={e => setDraftSubj(e.target.value)} placeholder="새 과목명" style={inputStyle} options={subjects} />
         <DataListInput id={`sel-part-${uid}`} value={draftPart} onChange={e => setDraftPart(e.target.value)} placeholder="새 단원명" style={inputStyle} options={safeParts} />
         <button
@@ -1187,7 +1198,7 @@ function SelectedBatchPanel({ selectedCount, onApply, subjects, getParts }) {
   )
 }
 
-function CardItem({ card, type, checked, onToggle, onChange, onMergeExisting, subjects = [], getParts }) {
+function CardItem({ card, type, checked, onToggle, onChange, onMergeExisting, topCategories = [], subjects = [], getParts }) {
   const uid = useId()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(card)
@@ -1197,7 +1208,8 @@ function CardItem({ card, type, checked, onToggle, onChange, onMergeExisting, su
   const issues = getReviewIssues(card)
 
   let safeParts = []
-  try { if (typeof getParts === 'function') { const partsResult = getParts(draft?.subject || ''); if (Array.isArray(partsResult)) safeParts = partsResult } } catch(e) {}
+  try { if (typeof getParts === 'function') { const partsResult = getParts(draft?.subject || '', getTopCategory(draft)); if (Array.isArray(partsResult)) safeParts = partsResult } } catch(e) {}
+  const safeTopCategories = Array.isArray(topCategories) ? topCategories : []
   const safeSubjects = Array.isArray(subjects) ? subjects : []
 
   const commitEdit = () => { onChange(draft); setEditing(false) }
@@ -1208,6 +1220,7 @@ function CardItem({ card, type, checked, onToggle, onChange, onMergeExisting, su
     return (
       <div style={{ background: checked ? 'rgba(99,102,241,0.1)' : 'rgba(15,23,42,0.7)', border: `1px solid ${checked ? '#6366f1' : '#1e293b'}`, borderRadius: 12, padding: '11px 13px', display: 'flex', flexDirection: 'column', width: '100%', boxSizing: 'border-box', cursor: 'default' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+          <DataListInput id={`ext-top-${uid}`} value={getTopCategory(draft)} onChange={(e) => setDraft({ ...draft, topCategory: e.target.value })} placeholder="대분류" style={inputStyle} options={safeTopCategories} />
           <DataListInput id={`ext-sub-${uid}`} value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="과목" style={inputStyle} options={safeSubjects} />
           <DataListInput id={`ext-part-${uid}`} value={draft.part} onChange={(e) => setDraft({ ...draft, part: e.target.value })} placeholder="단원" style={inputStyle} options={safeParts} />
         </div>
@@ -1237,6 +1250,7 @@ function CardItem({ card, type, checked, onToggle, onChange, onMergeExisting, su
       <div style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
         <div style={{ display: 'flex', gap: 5, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 10, borderRadius: 4, padding: '2px 7px', fontWeight: 600, background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>{meta.label}</span>
+          <span style={{ background: 'rgba(14,165,233,0.12)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.28)', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{getTopCategory(card)}</span>
           <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.subject || '미분류'}</span>
           <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.part || '미분류'}</span>
           {card.sourceNumber && <span style={{ background: 'rgba(14,165,233,0.12)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.28)', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>원문 {card.sourceNumber}</span>}
@@ -1318,6 +1332,13 @@ export default function ExtractPage({ cards, onImport }) {
     return () => clearInterval(iv)
   }, [status])
 
+  const allTopCategories = useMemo(() => {
+    let existing = []
+    try { if (Array.isArray(cards?.topCategories)) existing = cards.topCategories } catch(e){}
+    const newTops = Array.isArray(extracted) ? extracted.map(c => getTopCategory(c)).filter(Boolean) : []
+    return [...new Set([DEFAULT_TOP_CATEGORY, ...existing, ...newTops].filter(Boolean))]
+  }, [cards?.topCategories, extracted])
+
   const allSubjects = useMemo(() => {
     let existing = []
     try { if (Array.isArray(cards?.subjects)) existing = cards.subjects } catch(e){}
@@ -1325,36 +1346,42 @@ export default function ExtractPage({ cards, onImport }) {
     return [...new Set([...existing, ...newSubjects])]
   }, [cards?.subjects, extracted])
 
-  const getPartsForSubject = useCallback((subj) => {
+  const getPartsForSubject = useCallback((subj, topCategory = '전체') => {
     if (!subj) return []
     let existingParts = []
-    try { if (typeof cards?.parts === 'function') existingParts = cards.parts(subj) || [] } catch(e){}
-    const newParts = Array.isArray(extracted) ? extracted.filter(c => c?.subject === subj).map(c => c?.part).filter(Boolean) : []
+    try { if (typeof cards?.parts === 'function') existingParts = cards.parts(subj, topCategory) || [] } catch(e){}
+    const newParts = Array.isArray(extracted) ? extracted
+      .filter(c => matchesTopCategory(c, topCategory) && c?.subject === subj)
+      .map(c => c?.part)
+      .filter(Boolean) : []
     return [...new Set([...existingParts, ...newParts])]
   }, [cards, extracted])
 
-  const updateGroup = useCallback((oldSubj, oldPart, newSubj, newPart) => {
+  const updateGroup = useCallback((oldTop, oldSubj, oldPart, newTop, newSubj, newPart) => {
     setExtracted(prev => prev.map(c => {
+      const t = getTopCategory(c) || '미분류'
       const s = c.subject || '미분류'
       const p = c.part || '미분류'
-      if (s === oldSubj && p === oldPart) {
-        const updated = { ...c, subject: newSubj, part: newPart }
+      if (t === oldTop && s === oldSubj && p === oldPart) {
+        const updated = { ...c, topCategory: newTop || getTopCategory(c), subject: newSubj, part: newPart }
         return withClassification(updated, cards.allCards || [])
       }
       return c
     }))
   }, [cards.allCards])
 
-  const applyToSelected = useCallback(({ subject, part }) => {
+  const applyToSelected = useCallback(({ topCategory, subject, part }) => {
+    const nextTop = String(topCategory || '').trim()
     const nextSubject = cleanSubjectLabel(subject)
     const nextPart = cleanPartLabel(part)
-    if (selected.size === 0 || (!nextSubject && !nextPart)) return
+    if (selected.size === 0 || (!nextTop && !nextSubject && !nextPart)) return
 
     const appliedCount = selected.size
     setExtracted(prev => prev.map((card, index) => {
       if (!selected.has(index)) return card
       const updated = {
         ...card,
+        topCategory: nextTop || getTopCategory(card),
         subject: nextSubject || card.subject,
         part: nextPart || card.part,
       }
@@ -1380,10 +1407,11 @@ export default function ExtractPage({ cards, onImport }) {
       .map((c, index) => {
         const sourceNumber = getCardSourceNumber(c)
         if (extractType === 'mnemonic') {
-          return { cardType: 'mnemonic', subject: c.subject || '', part: c.part || '', sourceNumber, question: c.question || '', mnemonic: c.mnemonic || '', detail: c.detail || '', answer: c.answer || '', _sourceOrder: getCardSourceOrder(c, index) }
+          return { cardType: 'mnemonic', topCategory: getTopCategory(c), subject: c.subject || '', part: c.part || '', sourceNumber, question: c.question || '', mnemonic: c.mnemonic || '', detail: c.detail || '', answer: c.answer || '', _sourceOrder: getCardSourceOrder(c, index) }
         }
         return {
           cardType: extractType,
+          topCategory: getTopCategory(c),
           subject: c.subject || '',
           part: c.part || '',
           sourceNumber,
@@ -1650,9 +1678,12 @@ export default function ExtractPage({ cards, onImport }) {
       extractedAt,
     }))
     if (toAdd.length === 0) return
-    const added = await cards.addCards(toAdd)
-    const skipped = toAdd.length - added
-    setImportMsg(skipped > 0 ? `✓ ${added}개 추가 (중복 ${skipped}개 제외)` : `✓ ${added}개 추가됨`)
+    const result = await cards.addCards(toAdd)
+    const added = typeof result === 'number' ? result : result.added
+    const updated = typeof result === 'number' ? 0 : result.updated
+    const skipped = toAdd.length - added - updated
+    const updateText = updated > 0 ? ` · 대분류 ${updated}개 보강` : ''
+    setImportMsg(skipped > 0 ? `✓ ${added}개 추가${updateText} (중복 ${skipped}개 제외)` : `✓ ${added}개 추가됨${updateText}`)
     setTimeout(() => { setImportMsg(''); onImport() }, 1500)
   }
 
@@ -1800,8 +1831,8 @@ export default function ExtractPage({ cards, onImport }) {
             </div>
           )}
 
-          <GroupEditorPanel extracted={extracted} onUpdateGroup={updateGroup} subjects={allSubjects} getParts={getPartsForSubject} />
-          <SelectedBatchPanel selectedCount={selected.size} onApply={applyToSelected} subjects={allSubjects} getParts={getPartsForSubject} />
+          <GroupEditorPanel extracted={extracted} onUpdateGroup={updateGroup} topCategories={allTopCategories} subjects={allSubjects} getParts={getPartsForSubject} />
+          <SelectedBatchPanel selectedCount={selected.size} onApply={applyToSelected} topCategories={allTopCategories} subjects={allSubjects} getParts={getPartsForSubject} />
 
           <div style={{ background: 'rgba(15,23,42,0.72)', border: '1px solid #1e293b', borderRadius: 16, padding: 16, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
@@ -1869,7 +1900,7 @@ export default function ExtractPage({ cards, onImport }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', overflowX: 'hidden', marginBottom: 14, width: '100%', boxSizing: 'border-box' }}>
             {visible.length === 0 ? <div style={{ color: '#334155', textAlign: 'center', padding: '24px 0', fontSize: 13 }}>조건에 맞는 데이터 카드가 없습니다.</div> : visible.map(({ c, i }) => (
-                <CardItem key={i} card={c} type={c._type} checked={selected.has(i)} onToggle={() => toggle(i)} onChange={(updated) => updateCard(i, updated)} onMergeExisting={(mode) => mergeWithExisting(i, mode)} subjects={allSubjects} getParts={getPartsForSubject} />
+                <CardItem key={i} card={c} type={c._type} checked={selected.has(i)} onToggle={() => toggle(i)} onChange={(updated) => updateCard(i, updated)} onMergeExisting={(mode) => mergeWithExisting(i, mode)} topCategories={allTopCategories} subjects={allSubjects} getParts={getPartsForSubject} />
               ))
             }
           </div>
