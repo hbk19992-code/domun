@@ -3,6 +3,7 @@ import { isDue, dueLabel } from '../utils/srs'
 import { useTTS, ttsMnemonic, ttsDetail } from '../hooks/useTTS'
 import { useCloudSRS } from '../hooks/useCloudSRS'
 import { answerLabel, cardKindLabel, getCardKind, isAnswerCard } from '../utils/cardType'
+import { gradeAnswer } from '../utils/grading'
 
 const STATUS = {
   unknown: { label: '모름',   emoji: '✗', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
@@ -127,6 +128,7 @@ export default function StudyPage({ cards }) {
   const [idx, setIdx] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [shuffled, setShuffled] = useState(false)
+  const [answerInputs, setAnswerInputs] = useState({})
 
   // ✨ 클라우드 진행률 동기화 적용
   const { srs, srsLoading, review: cloudReview } = useCloudSRS()
@@ -320,7 +322,12 @@ export default function StudyPage({ cards }) {
 
       {card && <CardWithEdit card={card} flipped={flipped} setFlipped={setFlipped} entryOf={entryOf}
         handleStatus={handleStatus} updateCard={cards.updateCard}
-        subjects={cards?.subjects || []} getParts={cards?.parts} />}
+        subjects={cards?.subjects || []} getParts={cards?.parts}
+        answerInput={answerInputs[getCardKey(card)] || ''}
+        onAnswerInputChange={(value) => {
+          const key = getCardKey(card)
+          setAnswerInputs((prev) => ({ ...prev, [key]: value }))
+        }} />}
 
       {deck.length > 0 && (
         <div style={S.nav}>
@@ -333,7 +340,7 @@ export default function StudyPage({ cards }) {
   )
 }
 
-function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard, subjects = [], getParts }) {
+function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, updateCard, subjects = [], getParts, answerInput = '', onAnswerInputChange }) {
   const [editOpen, setEditOpen] = useState(false)
   const [draft, setDraft] = useState(card)
   const kind = getCardKind(card)
@@ -369,28 +376,31 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
 
   return (
     <>
-      <div style={S.card(flipped, flipped ? entryOf(card)?.status : null)}
-        onClick={() => !editOpen && setFlipped((f) => !f)}>
-        <div style={S.badge}>{card.subject} · {card.part}{card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(kind)}</div>
-        <div style={S.question}>{card.question}</div>
-        {flipped ? (
-          <>
-            {isAnswer ? (
-              <div style={{ ...S.detail, fontSize: 15, color: '#e2e8f0' }}>{card.answer}</div>
-            ) : (
-              <>
-                <div style={S.mnemonic}>{card.mnemonic}</div>
-                <div style={S.detail}>{card.detail}</div>
-              </>
-            )}
-            {entryOf(card) && (
-              <div style={S.dueTag}>다음 복습: {dueLabel(entryOf(card))} · {entryOf(card).count}회 학습</div>
-            )}
-          </>
-        ) : (
-          <div style={S.hint}>탭하여 정답 확인 →</div>
-        )}
-      </div>
+      {isAnswer ? (
+        <FillInAnswerCard
+          card={card}
+          cardKey={cardKey}
+          value={answerInput}
+          onChange={onAnswerInputChange}
+        />
+      ) : (
+        <div style={S.card(flipped, flipped ? entryOf(card)?.status : null)}
+          onClick={() => !editOpen && setFlipped((f) => !f)}>
+          <div style={S.badge}>{card.subject} · {card.part}{card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(kind)}</div>
+          <div style={S.question}>{card.question}</div>
+          {flipped ? (
+            <>
+              <div style={S.mnemonic}>{card.mnemonic}</div>
+              <div style={S.detail}>{card.detail}</div>
+              {entryOf(card) && (
+                <div style={S.dueTag}>다음 복습: {dueLabel(entryOf(card))} · {entryOf(card).count}회 학습</div>
+              )}
+            </>
+          ) : (
+            <div style={S.hint}>탭하여 정답 확인 →</div>
+          )}
+        </div>
+      )}
 
       <div style={{ ...S.statusRow, alignItems: 'stretch' }}>
         {STATUS_KEYS.map((key) => {
@@ -405,7 +415,7 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
           )
         })}
         <button onClick={() => { setDraft({ ...card }); setEditOpen((o) => !o) }}
-          title={canEdit ? '편집' : '기본 카드는 관리 탭에서 편집하세요'}
+          title={canEdit ? '편집' : '저장된 카드만 편집할 수 있습니다'}
           style={{
             background: editOpen ? 'rgba(99,102,241,0.15)' : 'rgba(15,23,42,0.5)',
             border: `1.5px solid ${editOpen ? '#6366f1' : '#1e293b'}`,
@@ -434,5 +444,190 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
         </div>
       )}
     </>
+  )
+}
+
+function FillInAnswerCard({ card, cardKey, value, onChange }) {
+  const [showResult, setShowResult] = useState(false)
+  const [showAnswerOnly, setShowAnswerOnly] = useState(false)
+
+  useEffect(() => {
+    setShowResult(false)
+    setShowAnswerOnly(false)
+  }, [cardKey])
+
+  const result = useMemo(() => {
+    if (!showResult) return null
+    return gradeAnswer(value, card.answer || '')
+  }, [card.answer, showResult, value])
+
+  const resetMode = () => {
+    setShowResult(false)
+    setShowAnswerOnly(false)
+  }
+
+  return (
+    <div style={{
+      background: 'rgba(15,23,42,0.86)',
+      border: '1px solid #1e293b',
+      borderRadius: 20,
+      minHeight: 280,
+      marginBottom: 14,
+      overflow: 'hidden',
+    }}>
+      <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid #1e293b' }}>
+        <div style={S.badge}>{card.subject} · {card.part}{card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(card)}</div>
+        <div style={{ ...S.question, marginBottom: card.mnemonic ? 8 : 0 }}>{card.question}</div>
+        {card.mnemonic && (
+          <div style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700, lineHeight: 1.5 }}>
+            키워드: {card.mnemonic}
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: 18 }}>
+        {card.figure && (
+          <div
+            style={{ background: '#fff', color: '#0f172a', borderRadius: 10, padding: 12, marginBottom: 12, overflowX: 'auto' }}
+            dangerouslySetInnerHTML={{ __html: card.figure }}
+          />
+        )}
+
+        {!showResult && !showAnswerOnly && (
+          <textarea
+            value={value}
+            onChange={(event) => onChange?.(event.target.value)}
+            placeholder="여기에 답안을 직접 써보세요."
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              minHeight: 160,
+              resize: 'vertical',
+              background: '#0a0f1e',
+              border: '1.5px solid #334155',
+              borderRadius: 12,
+              color: '#e2e8f0',
+              padding: '13px 14px',
+              fontSize: 14,
+              lineHeight: 1.65,
+              fontFamily: 'inherit',
+              outline: 'none',
+            }}
+          />
+        )}
+
+        {showResult && result && (
+          <div>
+            <div style={{
+              background: result.isPerfect ? 'rgba(34,197,94,0.14)' : result.accuracy >= 90 ? 'rgba(59,130,246,0.14)' : result.accuracy >= 70 ? 'rgba(245,158,11,0.14)' : 'rgba(239,68,68,0.14)',
+              border: `1px solid ${result.isPerfect ? '#22c55e' : result.accuracy >= 90 ? '#3b82f6' : result.accuracy >= 70 ? '#f59e0b' : '#ef4444'}`,
+              color: result.isPerfect ? '#86efac' : result.accuracy >= 90 ? '#93c5fd' : result.accuracy >= 70 ? '#fbbf24' : '#fca5a5',
+              borderRadius: 12,
+              padding: '12px 14px',
+              textAlign: 'center',
+              fontSize: 14,
+              fontWeight: 800,
+              marginBottom: 12,
+            }}>
+              {result.isPerfect ? '완벽합니다. 정답과 일치합니다.' : `정확도 ${result.accuracy}% · 차이 ${result.errorCount}곳`}
+            </div>
+
+            {!result.isPerfect && (
+              <>
+                <div style={{ color: '#64748b', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                  빨간 취소선은 잘못 쓴 부분, 초록 표시는 빠뜨린 정답 부분입니다.
+                </div>
+                <div style={{
+                  background: '#0a0f1e',
+                  border: '1px solid #1e293b',
+                  borderRadius: 12,
+                  color: '#cbd5e1',
+                  padding: 14,
+                  fontSize: 13,
+                  lineHeight: 1.75,
+                  whiteSpace: 'pre-wrap',
+                  overflowWrap: 'anywhere',
+                  marginBottom: 12,
+                }}>
+                  {result.diff.map((part, index) => {
+                    if (part.type === 'same') return <span key={index}>{part.text}</span>
+                    if (part.type === 'add') {
+                      return <span key={index} style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac', fontWeight: 800 }}>{part.text}</span>
+                    }
+                    return <span key={index} style={{ background: 'rgba(239,68,68,0.16)', color: '#fca5a5', textDecoration: 'line-through' }}>{part.text}</span>
+                  })}
+                </div>
+              </>
+            )}
+
+            <details style={{ background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 12, overflow: 'hidden' }}>
+              <summary style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 12, fontWeight: 700, padding: '10px 12px' }}>
+                정답 원문 보기
+              </summary>
+              <div style={{ borderTop: '1px solid #1e293b', color: '#e2e8f0', padding: 12, fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                {card.answer}
+              </div>
+            </details>
+          </div>
+        )}
+
+        {showAnswerOnly && (
+          <div style={{
+            background: '#0a0f1e',
+            border: '1px solid #1e293b',
+            borderRadius: 12,
+            color: '#e2e8f0',
+            padding: 14,
+            fontSize: 13,
+            lineHeight: 1.7,
+            whiteSpace: 'pre-wrap',
+          }}>
+            <div style={{ color: '#93c5fd', fontSize: 12, fontWeight: 800, marginBottom: 8 }}>{answerLabel(card)}</div>
+            {card.answer}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          {!showResult && !showAnswerOnly ? (
+            <>
+              <button onClick={() => { onChange?.(''); resetMode() }} style={{ ...S.navBtn(false), padding: '9px 14px' }}>지우기</button>
+              <button onClick={() => { setShowAnswerOnly(true); setShowResult(false) }} style={{ ...S.navBtn(false), padding: '9px 14px' }}>정답 보기</button>
+              <button
+                disabled={!String(value || '').trim()}
+                onClick={() => { setShowResult(true); setShowAnswerOnly(false) }}
+                style={{
+                  flex: 1,
+                  minWidth: 130,
+                  background: String(value || '').trim() ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b',
+                  color: String(value || '').trim() ? '#fff' : '#475569',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: String(value || '').trim() ? 'pointer' : 'not-allowed',
+                }}
+              >
+                채점하기
+              </button>
+            </>
+          ) : (
+            <button onClick={resetMode} style={{
+              flex: 1,
+              background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 10,
+              padding: '10px 14px',
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}>
+              다시 쓰기
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }

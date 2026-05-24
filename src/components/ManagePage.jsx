@@ -543,7 +543,7 @@ export default function ManagePage({ cards }) {
 
       <div style={S.section}>
         <div style={S.title}>데이터 백업 및 백업 파일 로드</div>
-        <div style={S.sub}>내장 기본 카드와 직접 만든 유저 카드를 모두 백업하거나 가져옵니다.</div>
+        <div style={S.sub}>Firestore에 저장된 내 카드 데이터를 백업하거나 가져옵니다. 공개 배포본에는 기본 카드가 포함되지 않습니다.</div>
         <div style={S.grid}>
           <button style={S.btn(false)} onClick={exportJSON}>📤 전체 내보내기 (.json)</button>
           <label style={{ ...S.btn(false), display: 'block', cursor: 'pointer' }}>

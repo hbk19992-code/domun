@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { collection, doc, setDoc, deleteDoc, writeBatch, query, getDocs, onSnapshot } from 'firebase/firestore';
 import { signInAnonymously, onAuthStateChanged, signInWithPopup, signOut, linkWithPopup } from 'firebase/auth';
 import { db, auth, googleProvider } from '../utils/firebase';
@@ -182,7 +182,15 @@ export function useCards() {
     }
   }, []);
 
-  const allCards = [...builtinCards, ...userCards];
+  const visibleUserCards = useMemo(
+    () => userCards.filter((card) => !builtinCards.some((builtin) => isDuplicate(builtin, card))),
+    [userCards]
+  );
+
+  const allCards = useMemo(
+    () => [...builtinCards, ...visibleUserCards],
+    [visibleUserCards]
+  );
 
   const addCard = useCallback(async (card) => {
     if (!uidRef.current) return;
@@ -403,15 +411,21 @@ export function useCards() {
     try { await signOut(auth); } catch (err) { console.error("로그아웃 실패:", err); }
   }, []);
 
-  const duplicateCount = (() => {
-    const withoutBuiltin = userCards.filter((c) => !builtinCards.some((b) => isDuplicate(b, c)));
+  const duplicateCount = useMemo(() => {
+    let count = userCards.length - visibleUserCards.length;
     const kept = [];
-    withoutBuiltin.forEach(c => { if(!kept.some(k => isDuplicate(k, c))) kept.push(c); });
-    return withoutBuiltin.length - kept.length;
-  })();
+    visibleUserCards.forEach(c => {
+      if (kept.some(k => isDuplicate(k, c))) count += 1;
+      else kept.push(c);
+    });
+    return count;
+  }, [userCards, visibleUserCards]);
 
-  const subjects = [...new Set(allCards.map((c) => c.subject))];
-  const parts = (subject) => [...new Set(allCards.filter((c) => c.subject === subject).map((c) => c.part))];
+  const subjects = useMemo(() => [...new Set(allCards.map((c) => c.subject).filter(Boolean))], [allCards]);
+  const parts = useCallback(
+    (subject) => [...new Set(allCards.filter((c) => c.subject === subject).map((c) => c.part).filter(Boolean))],
+    [allCards]
+  );
 
   return {
     allCards, userCards, builtinCards, loading,

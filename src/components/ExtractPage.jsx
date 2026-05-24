@@ -1586,7 +1586,7 @@ export default function ExtractPage({ cards, onImport }) {
     if (!candidate) return
     const match = candidate._match || classifyCard(candidate, cards.allCards || []).match
     if (!match?.id) {
-      setImportMsg('기본 카드와 겹친 항목은 직접 병합할 수 없습니다. 질문을 조금 바꿔 새 카드로 저장해 주세요.')
+      setImportMsg('기존 저장 카드와 겹친 항목은 직접 병합할 수 없습니다. 질문을 조금 바꿔 새 카드로 저장해 주세요.')
       setTimeout(() => setImportMsg(''), 3500)
       return
     }

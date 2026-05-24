@@ -74,6 +74,7 @@ function txtForCards(cards, title = '두문자 카드') {
       const sourcePrefix = card.sourceNumber ? ` [원문 ${card.sourceNumber}]` : ''
       lines.push(`${idx + 1}.${sourcePrefix} ${card.question}`)
       if (isAnswerCard(card)) {
+        if (card.mnemonic) lines.push(`키워드: ${card.mnemonic}`)
         lines.push(`${answerLabel(card)}: ${card.answer}`)
       } else {
         lines.push(`두문자: ${card.mnemonic || '-'}`)
@@ -108,7 +109,10 @@ function cardsXhtml(cards, title = '두문자 카드') {
   const sections = groupCards(normalized).map((group) => {
     const articles = group.cards.map((card, idx) => {
       const answer = isAnswerCard(card)
-        ? `<div class="answer"><span>${escapeXml(answerLabel(card))}</span>${paragraphHtml(card.answer)}</div>`
+        ? [
+            card.mnemonic ? `<p class="mnemonic"><span>키워드</span>${escapeXml(card.mnemonic)}</p>` : '',
+            `<div class="answer"><span>${escapeXml(answerLabel(card))}</span>${paragraphHtml(card.answer)}</div>`,
+          ].join('\n')
         : [
             `<p class="mnemonic"><span>두문자</span>${escapeXml(card.mnemonic || '-')}</p>`,
             card.detail ? `<div class="detail"><span>풀이</span>${paragraphHtml(card.detail)}</div>` : '',
