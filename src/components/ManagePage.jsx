@@ -393,6 +393,7 @@ export default function ManagePage({ cards }) {
             {[
               ['mnemonic', '두문자'],
               ['qa', 'Q&A'],
+              ['record', '민사기록형'],
               ['case', '판례'],
               ['statute', '조문'],
             ].map(([type, label]) => (

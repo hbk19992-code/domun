@@ -90,6 +90,9 @@ const PDF_TEXT_MIN_CHARS = 120
 const PDFJS_ESM_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs'
 const PDFJS_WORKER_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs'
 const EXTRACTOR_VERSION_LABEL = 'PDF 텍스트 우선 추출 v3 · 2026-05-24'
+const MISSING_SOURCE_CONTEXT_BEFORE = 220
+const MISSING_SOURCE_CONTEXT_AFTER = 1800
+const MAX_MISSING_RERUN_ITEMS = 60
 
 function makeExtractionBatchId() {
   return `extract_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -726,6 +729,91 @@ function getCardSourceNumber(card) {
   )
 }
 
+function normalizeSourceNumberToken(value) {
+  let s = cleanSourceNumber(value)
+    .replace(/[()[\].]/g, '')
+    .replace(/^0+(\d+)$/, '$1')
+  s = s.replace(/^제0*(\d+)(?:조|항|호|절|장)?$/, '제$1')
+  return s
+}
+
+function isLikelyNoiseSourceNumber(label, context) {
+  const normalized = normalizeSourceNumberToken(label)
+  const numeric = Number(normalized.replace(/[^\d]/g, ''))
+  if (Number.isFinite(numeric) && numeric > 300) return true
+  if (/^\d+$/.test(normalized) && /^(?:쪽|페이지|page)\b/i.test(String(context || '').trim())) return true
+  return false
+}
+
+function extractSourceNumberChecklist(text) {
+  const source = normalizePdfText(text)
+  if (!source) return []
+
+  const pattern = /(^|[\n\r]|[.;:!?]\s+|\]\s+|\s{2,})((?:0?\d{1,3}[.)]|\(\d{1,3}\)|[①-⑳㉠-㉭]|[가나다라마바사아자차카타파하ㄱ-ㅎ][.)]|제\s*\d{1,3}(?:조|항|호|절|장)?))(?=\s|[^\w가-힣]|$)/g
+  const items = []
+  const seen = new Set()
+  let match
+
+  while ((match = pattern.exec(source)) && items.length < 400) {
+    const label = cleanSourceNumber(match[2])
+    const norm = normalizeSourceNumberToken(label)
+    if (!norm || seen.has(norm)) continue
+
+    const pos = match.index + match[1].length
+    const context = source.slice(pos, pos + 130).replace(/\s+/g, ' ').trim()
+    if (isLikelyNoiseSourceNumber(label, context)) continue
+
+    seen.add(norm)
+    items.push({ label, norm, context, pos })
+  }
+
+  return items
+}
+
+function buildMissingSourceFocusText(sourceText, missingItems) {
+  const source = normalizePdfText(sourceText)
+  const targets = Array.isArray(missingItems) ? missingItems.slice(0, MAX_MISSING_RERUN_ITEMS) : []
+  if (!source || targets.length === 0) return ''
+
+  const sections = targets.map((item, index) => {
+    const fallbackPos = source.indexOf(item.label)
+    const pos = Number.isFinite(item.pos) ? item.pos : fallbackPos
+    const safePos = pos >= 0 ? pos : 0
+    const start = Math.max(0, safePos - MISSING_SOURCE_CONTEXT_BEFORE)
+    const end = Math.min(source.length, safePos + MISSING_SOURCE_CONTEXT_AFTER)
+    const excerpt = source.slice(start, end).trim()
+    return [
+      `\n\n[누락 의심 ${index + 1}]`,
+      `원문 번호: ${item.label}`,
+      `sourceNumber에는 반드시 "${item.label}" 값을 그대로 넣으세요.`,
+      excerpt,
+    ].join('\n')
+  })
+
+  return [
+    '아래는 전체 원문 중 기존 추출 결과에서 누락 의심으로 잡힌 번호 주변 문맥만 모은 것입니다.',
+    '아래에 적힌 원문 번호에 해당하는 실질 내용만 카드로 만드세요.',
+    '이미 추출된 다른 번호나 주변 배경 설명은 새 카드로 만들지 마세요.',
+    '각 카드의 sourceNumber에는 해당 [원문 번호] 값을 그대로 적으세요.',
+    sections.join('\n'),
+  ].join('\n')
+}
+
+function buildSourceNumberAudit(sourceText, cards) {
+  const checklist = extractSourceNumberChecklist(sourceText)
+  const cardNumbers = new Set((cards || [])
+    .map((card) => normalizeSourceNumberToken(getCardSourceNumber(card)))
+    .filter(Boolean))
+  const missing = checklist.filter((item) => !cardNumbers.has(item.norm))
+  const cardsWithoutSourceNumber = (cards || []).filter((card) => !getCardSourceNumber(card)).length
+  return {
+    total: checklist.length,
+    covered: checklist.length - missing.length,
+    missing,
+    cardsWithoutSourceNumber,
+  }
+}
+
 // 두문자 판별: 점/꺽쇠/+ 같은 명시적 구분자가 있어야 진짜 두문자
 function looksLikeMnemonic(text) {
   const s = String(text || '').trim()
@@ -1198,6 +1286,91 @@ function SelectedBatchPanel({ selectedCount, onApply, topCategories, subjects, g
   )
 }
 
+function SourceNumberAuditPanel({ audit, onRerunMissing }) {
+  if (!audit) return null
+  const hasChecklist = audit.total > 0
+  const hasMissing = audit.missing.length > 0
+  const visibleMissing = audit.missing.slice(0, 36)
+
+  return (
+    <div style={{
+      background: hasMissing ? 'rgba(245,158,11,0.08)' : 'rgba(34,197,94,0.07)',
+      border: `1px solid ${hasMissing ? 'rgba(245,158,11,0.38)' : 'rgba(34,197,94,0.28)'}`,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 800 }}>원문 번호 누락 점검표</div>
+          <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.55, marginTop: 4 }}>
+            {hasChecklist
+              ? `원문 번호 후보 ${audit.total}개 중 ${audit.covered}개가 카드 sourceNumber와 연결되었습니다.`
+              : '원문 텍스트에서 번호 항목을 찾지 못했습니다. 번호가 없는 문서이거나 PDF 텍스트 구조가 흐트러진 경우일 수 있습니다.'}
+            {audit.cardsWithoutSourceNumber > 0 && hasChecklist ? ` 원문 번호가 비어 있는 카드 ${audit.cardsWithoutSourceNumber}장도 확인해 주세요.` : ''}
+          </div>
+        </div>
+        {hasChecklist && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <div style={{
+              color: hasMissing ? '#fbbf24' : '#86efac',
+              background: hasMissing ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.12)',
+              border: `1px solid ${hasMissing ? 'rgba(245,158,11,0.35)' : 'rgba(34,197,94,0.3)'}`,
+              borderRadius: 10,
+              padding: '8px 12px',
+              fontSize: 12,
+              fontWeight: 900,
+              whiteSpace: 'nowrap',
+            }}>
+              누락 의심 {audit.missing.length}개
+            </div>
+            {hasMissing && (
+              <button
+                onClick={onRerunMissing}
+                disabled={!onRerunMissing}
+                style={{
+                  background: onRerunMissing ? 'linear-gradient(135deg,#f59e0b,#d97706)' : '#1e293b',
+                  color: onRerunMissing ? '#111827' : '#475569',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '8px 12px',
+                  fontSize: 12,
+                  fontWeight: 900,
+                  cursor: onRerunMissing ? 'pointer' : 'not-allowed',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                누락 번호만 다시 추출
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {hasMissing && (
+        <div style={{ marginTop: 13 }}>
+          <div style={{ color: '#fbbf24', fontSize: 12, fontWeight: 800, marginBottom: 8 }}>
+            아래 번호는 추출 카드의 원문 번호에서 아직 발견되지 않았습니다.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 170, overflowY: 'auto' }}>
+            {visibleMissing.map((item) => (
+              <div key={item.norm} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: 'rgba(10,15,30,0.42)', border: '1px solid rgba(245,158,11,0.18)', borderRadius: 10, padding: '8px 10px' }}>
+                <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 900, minWidth: 36 }}>{item.label}</span>
+                <span style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.45, wordBreak: 'keep-all' }}>{item.context}</span>
+              </div>
+            ))}
+            {audit.missing.length > visibleMissing.length && (
+              <div style={{ color: '#64748b', fontSize: 12, padding: '4px 2px' }}>
+                외 {audit.missing.length - visibleMissing.length}개가 더 있습니다. 문서를 단원별로 더 작게 나누거나 더 촘촘히 재추출해 주세요.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CardItem({ card, type, checked, onToggle, onChange, onMergeExisting, topCategories = [], subjects = [], getParts }) {
   const uid = useId()
   const [editing, setEditing] = useState(false)
@@ -1652,6 +1825,23 @@ export default function ExtractPage({ cards, onImport }) {
     statute: extracted.filter((c) => matchesReviewFilter(c, 'statute')).length,
   }
 
+  const sourceAudit = useMemo(
+    () => String(lastSource?.text || '').trim() ? buildSourceNumberAudit(lastSource.text, extracted) : null,
+    [lastSource?.text, extracted]
+  )
+
+  const rerunMissingSourceNumbers = useCallback(async () => {
+    if (!lastSource?.text || !sourceAudit?.missing?.length || extracted.length === 0) return
+    const focusedText = buildMissingSourceFocusText(lastSource.text, sourceAudit.missing)
+    if (!focusedText.trim()) return
+    setImportMsg(`누락 의심 번호 ${Math.min(sourceAudit.missing.length, MAX_MISSING_RERUN_ITEMS)}개만 다시 추출합니다...`)
+    await runTextExtraction(
+      focusedText,
+      `${lastSource.label || '원문'} 누락 번호 보충`,
+      { dense: true, mergeBase: extracted }
+    )
+  }, [lastSource, sourceAudit, extracted, runTextExtraction])
+
   const visible = extracted
     .map((c, i) => ({ c, i }))
     .filter(({ c }) => (filterTab === 'all' || c._type === filterTab) && matchesReviewFilter(c, reviewFilter))
@@ -1831,6 +2021,7 @@ export default function ExtractPage({ cards, onImport }) {
             </div>
           )}
 
+          <SourceNumberAuditPanel audit={sourceAudit} onRerunMissing={rerunMissingSourceNumbers} />
           <GroupEditorPanel extracted={extracted} onUpdateGroup={updateGroup} topCategories={allTopCategories} subjects={allSubjects} getParts={getPartsForSubject} />
           <SelectedBatchPanel selectedCount={selected.size} onApply={applyToSelected} topCategories={allTopCategories} subjects={allSubjects} getParts={getPartsForSubject} />
 
@@ -1853,6 +2044,7 @@ export default function ExtractPage({ cards, onImport }) {
                 ['검수 필요', reviewCounts.needsReview, '#f59e0b'],
                 ['미분류', reviewCounts.unclassified, '#fbbf24'],
                 ['빈칸', reviewCounts.missingCore, '#ef4444'],
+                ...(sourceAudit?.total > 0 ? [['번호 누락', sourceAudit.missing.length, '#fbbf24']] : []),
                 ['보강', counts.upgrade, '#f59e0b'],
                 ['이미 보유', counts.existing, '#64748b'],
                 ['판례', reviewCounts.case, '#38bdf8'],

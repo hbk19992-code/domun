@@ -127,6 +127,7 @@ export default function StudyPage({ cards }) {
   const [topCategory, setTopCategory] = useState('전체')
   const [subject, setSubject] = useState('전체')
   const [part, setPart] = useState('전체')
+  const [cardScope, setCardScope] = useState('all')
   const [statusFilter, setStatusFilter] = useState('전체')
   const [mode, setMode] = useState('all')
   const [idx, setIdx] = useState(0)
@@ -164,8 +165,10 @@ export default function StudyPage({ cards }) {
     let c = allCards.filter((x) => matchesTopCategory(x, topCategory))
     if (subject !== '전체') c = c.filter((x) => x.subject === subject)
     if (part !== '전체') c = c.filter((x) => x.part === part)
+    if (cardScope === 'record') c = c.filter((x) => isCivilRecordGradingCard(x))
+    if (cardScope === 'normal') c = c.filter((x) => !isCivilRecordGradingCard(x))
     return c
-  }, [allCards, topCategory, subject, part])
+  }, [allCards, topCategory, subject, part, cardScope])
 
   const dueCards = useMemo(() => scoped.filter((c) => isDue(srs[getCardKey(c)])), [scoped, srs])
 
@@ -184,6 +187,15 @@ export default function StudyPage({ cards }) {
     total:   scoped.length,
   }), [scoped, srs])
 
+  const scopeStats = useMemo(() => {
+    const base = allCards
+      .filter((x) => matchesTopCategory(x, topCategory))
+      .filter((x) => subject === '전체' || x.subject === subject)
+      .filter((x) => part === '전체' || x.part === part)
+    const record = base.filter((x) => isCivilRecordGradingCard(x)).length
+    return { all: base.length, normal: base.length - record, record }
+  }, [allCards, topCategory, subject, part])
+
   const safeIdx = Math.min(idx, Math.max(0, deck.length - 1))
   const card = deck[safeIdx] || null
   const resetView = () => { setIdx(0); setFlipped(false) }
@@ -193,10 +205,13 @@ export default function StudyPage({ cards }) {
     if (!card) return
     review(card, result)
     if (listenMode) {
+      const keepPlaying = playing && safeIdx < deck.length - 1
       stop()
-      setPlaying(false)
       setFlipped(false)
-      setTimeout(() => setIdx((i) => Math.min(deck.length - 1, i + 1)), 180)
+      setTimeout(() => {
+        setIdx((i) => Math.min(deck.length - 1, i + 1))
+        setPlaying(keepPlaying)
+      }, 180)
       return
     }
     setTimeout(() => { setFlipped(false); setIdx((i) => Math.min(deck.length - 1, i + 1)) }, 280)
@@ -220,9 +235,9 @@ export default function StudyPage({ cards }) {
           { text: ttsMnemonic(card.mnemonic), pauseAfter: 900 },
           { text: ttsDetail(card.detail), pauseAfter: 1600 },
         ]
-    speak(segments, { rate, onDone: () => { if (isLast) { setPlaying(false); return } setIdx((i) => i + 1) } })
+    speak(segments, { rate, onDone: () => { if (isLast) { setPlaying(false); return } setFlipped(false); setIdx((i) => i + 1) } })
     return () => stop()
-  }, [listenMode, playing, safeIdx, rate])
+  }, [listenMode, playing, safeIdx, rate, card, deck.length, speak, stop])
 
   const togglePlay = () => { if (playing) { setPlaying(false); stop() } else setPlaying(true) }
   const exitListen = () => { setPlaying(false); stop(); setListenMode(false) }
@@ -313,6 +328,11 @@ export default function StudyPage({ cards }) {
           {partOptions.map((p) => <option key={p}>{p}</option>)}
         </select>
         <button style={S.shuffleBtn(shuffled)} onClick={() => { setShuffled((s) => !s); resetView() }}>🔀 섞기</button>
+        <select style={S.select} value={cardScope} onChange={(e) => { setCardScope(e.target.value); resetView() }}>
+          <option value="all">전체 카드 ({scopeStats.all})</option>
+          <option value="normal">일반 카드 ({scopeStats.normal})</option>
+          <option value="record">기록형 ({scopeStats.record})</option>
+        </select>
         {ttsSupported && (
           <button style={S.shuffleBtn(listenMode)}
             onClick={() => { if (listenMode) exitListen(); else { setListenMode(true); setPlaying(false) } }}>
@@ -327,9 +347,9 @@ export default function StudyPage({ cards }) {
             <button style={S.playBtn(playing)} onClick={togglePlay}>{playing ? '⏸' : '▶'}</button>
             <div style={{ flex: 1 }}>
               <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 700 }}>
-                {playing ? '재생 중 — 자동으로 넘어갑니다' : '음성 학습'}
+                {playing ? '재생 중 — 자동으로 뒤집고 이어갑니다' : '음성 학습'}
               </div>
-              <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>질문 → 정답 순으로 읽어줍니다</div>
+              <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>질문을 읽은 뒤 자동으로 뒤집고 정답을 읽습니다. 상태 버튼을 누르면 바로 다음 카드로 이어집니다.</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
