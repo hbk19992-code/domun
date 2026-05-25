@@ -110,6 +110,16 @@ const S = {
     marginBottom: 12,
     whiteSpace: 'pre-wrap',
   },
+  figure: {
+    background: '#fff',
+    color: '#0f172a',
+    border: '1px solid #e2e8f0',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    overflowX: 'auto',
+    lineHeight: 1.5,
+  },
 }
 
 function statusLabel(status) {
@@ -365,6 +375,13 @@ export default function RecordPage({ cards }) {
             </div>
 
             <div style={S.body}>
+              {currentCard.figure && (
+                <div
+                  style={S.figure}
+                  dangerouslySetInnerHTML={{ __html: currentCard.figure }}
+                />
+              )}
+
               {!answerVisible && (
                 <textarea
                   value={draft}
