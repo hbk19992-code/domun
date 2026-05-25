@@ -552,12 +552,7 @@ function FillInAnswerCard({ card, cardKey, value, onChange }) {
     }}>
       <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid #1e293b' }}>
         <div style={S.badge}>{getTopCategory(card)} · {card.subject} · {card.part}{card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(card)}</div>
-        <div style={{ ...S.question, marginBottom: card.mnemonic ? 8 : 0 }}>{card.question}</div>
-        {card.mnemonic && (
-          <div style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700, lineHeight: 1.5 }}>
-            키워드: {card.mnemonic}
-          </div>
-        )}
+        <div style={{ ...S.question, marginBottom: 0 }}>{card.question}</div>
       </div>
 
       <div style={{ padding: 18 }}>
@@ -606,6 +601,23 @@ function FillInAnswerCard({ card, cardKey, value, onChange }) {
             }}>
               {result.isPerfect ? '완벽합니다. 정답과 일치합니다.' : `정확도 ${result.accuracy}% · 차이 ${result.errorCount}곳`}
             </div>
+
+            {card.mnemonic && (
+              <div style={{
+                background: 'rgba(251,191,36,0.1)',
+                border: '1px solid rgba(251,191,36,0.26)',
+                borderRadius: 12,
+                color: '#fbbf24',
+                padding: '10px 12px',
+                fontSize: 13,
+                lineHeight: 1.55,
+                fontWeight: 800,
+                marginBottom: 12,
+                whiteSpace: 'pre-wrap',
+              }}>
+                키워드: {card.mnemonic}
+              </div>
+            )}
 
             {!result.isPerfect && (
               <>
@@ -658,6 +670,22 @@ function FillInAnswerCard({ card, cardKey, value, onChange }) {
             whiteSpace: 'pre-wrap',
           }}>
             <div style={{ color: '#93c5fd', fontSize: 12, fontWeight: 800, marginBottom: 8 }}>{answerLabel(card)}</div>
+            {card.mnemonic && (
+              <div style={{
+                background: 'rgba(251,191,36,0.1)',
+                border: '1px solid rgba(251,191,36,0.26)',
+                borderRadius: 10,
+                color: '#fbbf24',
+                padding: '9px 11px',
+                fontSize: 13,
+                lineHeight: 1.55,
+                fontWeight: 800,
+                marginBottom: 10,
+                whiteSpace: 'pre-wrap',
+              }}>
+                키워드: {card.mnemonic}
+              </div>
+            )}
             {card.answer}
           </div>
         )}

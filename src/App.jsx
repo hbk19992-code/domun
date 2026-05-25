@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useCards } from './hooks/useCards'
 import StudyPage from './components/StudyPage'
+import RecordPage from './components/RecordPage'
 import ExtractPage from './components/ExtractPage'
 import ManagePage from './components/ManagePage'
 import { getShareParam, decodeCards, clearShareParam } from './utils/share'
 
 const TABS = [
   { id: 'study', label: '📚 학습' },
+  { id: 'record', label: '✎ 기록형' },
   { id: 'extract', label: '✦ AI 추출' },
   { id: 'manage', label: '⚙ 관리' },
 ]
@@ -20,7 +22,7 @@ const S = {
     background: 'rgba(10,15,30,0.95)', backdropFilter: 'blur(12px)',
   },
   logo: { fontSize: 17, fontWeight: 800, color: '#e2e8f0', padding: '16px 0', whiteSpace: 'nowrap' },
-  tabs: { display: 'flex', gap: 2 },
+  tabs: { display: 'flex', gap: 2, overflowX: 'auto' },
   tab: (active) => ({
     padding: '16px 10px', border: 'none', background: 'none',
     color: active ? '#818cf8' : '#475569',
@@ -144,6 +146,7 @@ export default function App() {
           </div>
         )}
         {tab === 'study'   && <StudyPage   cards={cards} />}
+        {tab === 'record'  && <RecordPage  cards={cards} />}
         {tab === 'extract' && <ExtractPage cards={cards} onImport={() => setTab('study')} />}
         {tab === 'manage'  && <ManagePage  cards={cards} />}
       </main>
