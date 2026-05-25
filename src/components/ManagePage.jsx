@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { answerLabel, answerPlaceholder, cardKindLabel, getCardKind, isAnswerCard } from '../utils/cardType'
-import { DEFAULT_TOP_CATEGORY, getTopCategory, matchesTopCategory } from '../utils/classification'
+import { DEFAULT_TOP_CATEGORY, getTopCategory, matchesTopCategory, normalizeClassificationOrder, partOrderKey, subjectOrderKey, sortLabelsByOrder } from '../utils/classification'
 
 const S = {
   section: { background: 'rgba(15,23,42,0.6)', border: '1px solid #1e293b', borderRadius: 16, padding: 20, marginBottom: 16 },
@@ -66,11 +66,57 @@ function summarizeLabels(values, fallback) {
   return `${labels.slice(0, 2).join(', ')} 외 ${labels.length - 2}`
 }
 
+function mergeOrder(orderList, labels) {
+  return sortLabelsByOrder(labels, orderList)
+}
+
+function moveItem(list, index, dir) {
+  const next = [...list]
+  const target = index + dir
+  if (target < 0 || target >= next.length) return next
+  const temp = next[index]
+  next[index] = next[target]
+  next[target] = temp
+  return next
+}
+
+function OrderList({ title, sub, items, onChange }) {
+  const safeItems = Array.isArray(items) ? items : []
+  return (
+    <div style={{ background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 12, padding: 12 }}>
+      <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{title}</div>
+      {sub && <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.45, marginBottom: 10 }}>{sub}</div>}
+      {safeItems.length === 0 ? (
+        <div style={{ color: '#475569', fontSize: 12, padding: '14px 0', textAlign: 'center' }}>정렬할 항목이 없습니다.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {safeItems.map((item, index) => (
+            <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(15,23,42,0.7)', border: '1px solid #1e293b', borderRadius: 10, padding: '8px 9px' }}>
+              <span style={{ color: '#475569', fontSize: 11, width: 24, textAlign: 'right' }}>{index + 1}</span>
+              <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 700, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item}</span>
+              <button
+                disabled={index === 0}
+                onClick={() => onChange(moveItem(safeItems, index, -1))}
+                style={{ ...S.btn(false), padding: '6px 9px', color: index === 0 ? '#334155' : '#94a3b8', cursor: index === 0 ? 'not-allowed' : 'pointer' }}
+              >↑</button>
+              <button
+                disabled={index === safeItems.length - 1}
+                onClick={() => onChange(moveItem(safeItems, index, 1))}
+                style={{ ...S.btn(false), padding: '6px 9px', color: index === safeItems.length - 1 ? '#334155' : '#94a3b8', cursor: index === safeItems.length - 1 ? 'not-allowed' : 'pointer' }}
+              >↓</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ManagePage({ cards }) {
   const {
     allCards, userCards, duplicateCount, isAnonymous, userEmail, loginWithGoogle, handleLogout,
     exportJSON, exportX4TXT, exportX4EPUB, importJSON, deduplicateSelf, deleteBy, countBy, renameFolder, updateCardsByIds,
-    topCategories, subjects, subjectsForTop, parts
+    topCategories, subjects, subjectsForTop, parts, classificationOrder, saveClassificationOrder
   } = cards
 
   // ── [상태] 선별 삭제 및 폴더 관리 관련 ──
@@ -111,10 +157,20 @@ export default function ManagePage({ cards }) {
   const [x4Sub, setX4Sub] = useState('전체')
   const [x4Part, setX4Part] = useState('전체')
 
+  // ── [상태] 분류 표시 순서 설정 관련 ──
+  const [orderSubjectTop, setOrderSubjectTop] = useState('전체')
+  const [orderPartTop, setOrderPartTop] = useState('전체')
+  const [orderPartSubject, setOrderPartSubject] = useState('')
+
   // ── 옵션 메모이제이션 ──
   const safeTopCategories = useMemo(
     () => [...new Set([DEFAULT_TOP_CATEGORY, ...(Array.isArray(topCategories) ? topCategories : [])].filter(Boolean))],
     [topCategories]
+  )
+
+  const safeClassificationOrder = useMemo(
+    () => normalizeClassificationOrder(classificationOrder),
+    [classificationOrder]
   )
 
   const getSubjectOptions = (topCategory) => {
@@ -153,14 +209,14 @@ export default function ManagePage({ cards }) {
   }, [userCards, listTop, listSub])
 
   const x4SubjectOptions = useMemo(() => {
-    return [...new Set(allCards.filter((c) => matchesTopCategory(c, x4Top)).map((c) => c.subject).filter(Boolean))]
-  }, [allCards, x4Top])
+    return getSubjectOptions(x4Top)
+  }, [x4Top, subjects, subjectsForTop])
 
   const x4PartOptions = useMemo(() => {
+    if (x4Sub !== '전체') return parts(x4Sub, x4Top)
     const topBase = allCards.filter((c) => matchesTopCategory(c, x4Top))
-    const base = x4Sub === '전체' ? topBase : topBase.filter((c) => c.subject === x4Sub)
-    return [...new Set(base.map((c) => c.part).filter(Boolean))]
-  }, [allCards, x4Top, x4Sub])
+    return [...new Set(topBase.map((c) => c.part).filter(Boolean))]
+  }, [allCards, x4Top, x4Sub, parts])
 
   const x4Cards = useMemo(() => {
     return allCards.filter((c) => {
@@ -238,6 +294,51 @@ export default function ManagePage({ cards }) {
     if (targetSubject) return parts(targetSubject, targetTop || '전체')
     return [...new Set(activeBatchCards.map((card) => card.part).filter(Boolean))]
   }, [activeBatchCards, batchNewTop, batchNewSub, parts])
+
+  const orderTopItems = useMemo(
+    () => mergeOrder(safeClassificationOrder.topCategories, safeTopCategories),
+    [safeClassificationOrder, safeTopCategories]
+  )
+  const orderSubjectItems = useMemo(() => {
+    const key = subjectOrderKey(orderSubjectTop)
+    return mergeOrder(safeClassificationOrder.subjects?.[key], getSubjectOptions(orderSubjectTop))
+  }, [safeClassificationOrder, orderSubjectTop, subjects, subjectsForTop])
+  const orderPartSubjectOptions = useMemo(
+    () => getSubjectOptions(orderPartTop),
+    [orderPartTop, subjects, subjectsForTop]
+  )
+  const activeOrderPartSubject = orderPartSubjectOptions.includes(orderPartSubject)
+    ? orderPartSubject
+    : (orderPartSubjectOptions[0] || '')
+  const orderPartItems = useMemo(() => {
+    if (!activeOrderPartSubject) return []
+    const key = partOrderKey(orderPartTop, activeOrderPartSubject)
+    return mergeOrder(safeClassificationOrder.parts?.[key], parts(activeOrderPartSubject, orderPartTop))
+  }, [activeOrderPartSubject, orderPartTop, parts, safeClassificationOrder])
+
+  const saveOrder = (patch) => {
+    if (typeof saveClassificationOrder !== 'function') return
+    saveClassificationOrder({
+      ...safeClassificationOrder,
+      ...patch,
+    })
+  }
+  const saveTopOrder = (next) => saveOrder({ topCategories: next })
+  const saveSubjectOrder = (next) => saveOrder({
+    subjects: {
+      ...safeClassificationOrder.subjects,
+      [subjectOrderKey(orderSubjectTop)]: next,
+    }
+  })
+  const savePartOrder = (next) => {
+    if (!activeOrderPartSubject) return
+    saveOrder({
+      parts: {
+        ...safeClassificationOrder.parts,
+        [partOrderKey(orderPartTop, activeOrderPartSubject)]: next,
+      }
+    })
+  }
 
   // 필터링된 실시간 유저 카드 목록 계산
   const filteredUserCards = useMemo(() => {
@@ -374,6 +475,50 @@ export default function ManagePage({ cards }) {
           ) : (
             <button style={S.logoutBtn} onClick={handleLogout}>로그아웃</button>
           )}
+        </div>
+      </div>
+
+      {/* 분류 표시 순서 설정 섹션 */}
+      <div style={S.section}>
+        <div style={S.title}>분류 표시 순서 설정</div>
+        <div style={S.sub}>학습, 기록형, 관리, X4 내보내기에서 보이는 대분류·과목·단원 순서를 고정합니다. 카드 내용은 바꾸지 않고 순서 설정만 저장합니다. 과목/단원의 "전체" 순서는 특정 대분류에 별도 순서가 없을 때 기본값으로 쓰입니다.</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+          <OrderList
+            title="대분류 순서"
+            sub="전체 화면의 가장 바깥 분류 순서입니다."
+            items={orderTopItems}
+            onChange={saveTopOrder}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select style={{ ...S.select, flex: 1 }} value={orderSubjectTop} onChange={(e) => setOrderSubjectTop(e.target.value)}>
+                <option>전체</option>{safeTopCategories.map((value) => <option key={value}>{value}</option>)}
+              </select>
+            </div>
+            <OrderList
+              title="과목 순서"
+              sub={`${orderSubjectTop} 대분류 안에서 과목이 보이는 순서입니다.`}
+              items={orderSubjectItems}
+              onChange={saveSubjectOrder}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select style={{ ...S.select, flex: 1 }} value={orderPartTop} onChange={(e) => { setOrderPartTop(e.target.value); setOrderPartSubject('') }}>
+                <option>전체</option>{safeTopCategories.map((value) => <option key={value}>{value}</option>)}
+              </select>
+              <select style={{ ...S.select, flex: 1 }} value={activeOrderPartSubject} onChange={(e) => setOrderPartSubject(e.target.value)}>
+                {orderPartSubjectOptions.length === 0 && <option value="">과목 없음</option>}
+                {orderPartSubjectOptions.map((value) => <option key={value}>{value}</option>)}
+              </select>
+            </div>
+            <OrderList
+              title="단원 순서"
+              sub={activeOrderPartSubject ? `${orderPartTop} > ${activeOrderPartSubject} 안에서 단원이 보이는 순서입니다.` : '과목이 있어야 단원 순서를 설정할 수 있습니다.'}
+              items={orderPartItems}
+              onChange={savePartOrder}
+            />
+          </div>
         </div>
       </div>
 

@@ -5,12 +5,24 @@ import { db, auth, googleProvider } from '../utils/firebase';
 import { builtinCards } from '../data/mnemonics';
 import { isDuplicate } from '../utils/dedup';
 import { exportX4Epub, exportX4Txt } from '../utils/x4Export';
-import { DEFAULT_TOP_CATEGORY, getTopCategory, matchesTopCategory } from '../utils/classification';
+import {
+  DEFAULT_TOP_CATEGORY,
+  GLOBAL_ORDER_KEY,
+  getTopCategory,
+  matchesTopCategory,
+  normalizeClassificationOrder,
+  partOrderKey,
+  sortCardsByClassificationOrder,
+  sortLabelsByOrder,
+  subjectOrderKey
+} from '../utils/classification';
 
 const genToken = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 const CACHE_KEY = (uid) => `cards_cache_${uid}`;
 const REV_KEY = (uid) => `cache_rev_${uid}`;
 const LAST_CACHE_KEY = 'cards_cache_last';
+const ORDER_KEY = (uid) => `classification_order_${uid}`;
+const LAST_ORDER_KEY = 'classification_order_last';
 
 function readCardsFromStorage(key) {
   try {
@@ -27,6 +39,20 @@ function writeCardsCache(key, cards) {
   localStorage.setItem(LAST_CACHE_KEY, JSON.stringify(cards));
 }
 
+function readClassificationOrder(key) {
+  try {
+    return normalizeClassificationOrder(JSON.parse(localStorage.getItem(key) || '{}'));
+  } catch {
+    return normalizeClassificationOrder({});
+  }
+}
+
+function writeClassificationOrderCache(key, order) {
+  const normalized = normalizeClassificationOrder(order);
+  localStorage.setItem(key, JSON.stringify(normalized));
+  localStorage.setItem(LAST_ORDER_KEY, JSON.stringify(normalized));
+}
+
 export function useCards() {
   const [userCards, setUserCards] = useState(() => {
     const last = readCardsFromStorage(LAST_CACHE_KEY);
@@ -38,6 +64,7 @@ export function useCards() {
   const [uid, setUid] = useState(null);
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [userEmail, setUserEmail] = useState('');
+  const [classificationOrder, setClassificationOrder] = useState(() => readClassificationOrder(LAST_ORDER_KEY));
 
   const localRevRef = useRef(null);
   const uidRef = useRef(null);
@@ -90,6 +117,7 @@ export function useCards() {
 
   useEffect(() => {
     let unsubscribeMeta = null;
+    let unsubscribeOrder = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (!user) {
@@ -107,6 +135,15 @@ export function useCards() {
       const currentUid = user.uid;
       setUid(currentUid);
       uidRef.current = currentUid;
+
+      const cachedOrder = readClassificationOrder(ORDER_KEY(currentUid));
+      if (
+        cachedOrder.topCategories.length > 0 ||
+        Object.keys(cachedOrder.subjects).length > 0 ||
+        Object.keys(cachedOrder.parts).length > 0
+      ) {
+        setClassificationOrder(cachedOrder);
+      }
 
       const cachedRev = localStorage.getItem(REV_KEY(currentUid));
       const cachedData = localStorage.getItem(CACHE_KEY(currentUid));
@@ -140,13 +177,46 @@ export function useCards() {
         setSyncing(false);
         setLoading(false);
       });
+
+      const orderRef = doc(db, 'users', currentUid, 'meta', 'classificationOrder');
+      unsubscribeOrder = onSnapshot(orderRef, (orderSnap) => {
+        if (!orderSnap.exists()) return;
+        const nextOrder = normalizeClassificationOrder(orderSnap.data());
+        setClassificationOrder(nextOrder);
+        writeClassificationOrderCache(ORDER_KEY(currentUid), nextOrder);
+      }, (err) => {
+        console.error("분류 순서 동기화 오류:", err);
+      });
     });
 
     return () => {
       if (unsubscribeAuth) unsubscribeAuth();
       if (unsubscribeMeta) unsubscribeMeta();
+      if (unsubscribeOrder) unsubscribeOrder();
     };
   }, [fullSync]);
+
+  const saveClassificationOrder = useCallback(async (nextOrder) => {
+    const normalized = normalizeClassificationOrder(nextOrder);
+    setClassificationOrder(normalized);
+
+    const currentUid = uidRef.current;
+    if (currentUid) {
+      writeClassificationOrderCache(ORDER_KEY(currentUid), normalized);
+      try {
+        await setDoc(
+          doc(db, 'users', currentUid, 'meta', 'classificationOrder'),
+          { ...normalized, updatedAt: new Date().toISOString() },
+          { merge: true }
+        );
+      } catch (err) {
+        console.error("분류 순서 저장 실패:", err);
+        setSyncError('분류 순서 저장이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } else {
+      writeClassificationOrderCache('classification_order_local', normalized);
+    }
+  }, []);
 
   const commitOps = useCallback(async (nextCards, buildBatchFunc) => {
     const currentUid = uidRef.current;
@@ -188,9 +258,14 @@ export function useCards() {
     [userCards]
   );
 
+  const orderedUserCards = useMemo(
+    () => sortCardsByClassificationOrder(userCards, classificationOrder),
+    [userCards, classificationOrder]
+  );
+
   const allCards = useMemo(
-    () => [...builtinCards, ...visibleUserCards],
-    [visibleUserCards]
+    () => sortCardsByClassificationOrder([...builtinCards, ...visibleUserCards], classificationOrder),
+    [visibleUserCards, classificationOrder]
   );
 
   const addCard = useCallback(async (card) => {
@@ -462,31 +537,38 @@ export function useCards() {
     return count;
   }, [userCards, visibleUserCards]);
 
-  const topCategories = useMemo(() => [...new Set(allCards.map((c) => getTopCategory(c)).filter(Boolean))], [allCards]);
-  const subjects = useMemo(() => [...new Set(allCards.map((c) => c.subject).filter(Boolean))], [allCards]);
+  const topCategories = useMemo(
+    () => sortLabelsByOrder(allCards.map((c) => getTopCategory(c)), classificationOrder.topCategories),
+    [allCards, classificationOrder]
+  );
+  const subjects = useMemo(
+    () => sortLabelsByOrder(allCards.map((c) => c.subject).filter(Boolean), classificationOrder.subjects?.[GLOBAL_ORDER_KEY]),
+    [allCards, classificationOrder]
+  );
   const subjectsForTop = useCallback(
-    (topCategory = '전체') => [...new Set(allCards
+    (topCategory = '전체') => sortLabelsByOrder(allCards
       .filter((c) => matchesTopCategory(c, topCategory))
       .map((c) => c.subject)
-      .filter(Boolean))],
-    [allCards]
+      .filter(Boolean), classificationOrder.subjects?.[subjectOrderKey(topCategory)] || classificationOrder.subjects?.[GLOBAL_ORDER_KEY]),
+    [allCards, classificationOrder]
   );
   const parts = useCallback(
-    (subject, topCategory = '전체') => [...new Set(allCards
+    (subject, topCategory = '전체') => sortLabelsByOrder(allCards
       .filter((c) => matchesTopCategory(c, topCategory))
       .filter((c) => c.subject === subject)
       .map((c) => c.part)
-      .filter(Boolean))],
-    [allCards]
+      .filter(Boolean), classificationOrder.parts?.[partOrderKey(topCategory, subject)] || classificationOrder.parts?.[partOrderKey(GLOBAL_ORDER_KEY, subject)]),
+    [allCards, classificationOrder]
   );
 
   return {
-    allCards, userCards, builtinCards, loading,
+    allCards, userCards: orderedUserCards, builtinCards, loading,
     syncing, syncError,
     addCard, addCards, deleteCard, updateCard, updateCardsByIds,
     moveCard: () => {}, reorderCard: () => {}, deleteBy, countBy, renameFolder,
     exportJSON, exportX4TXT, exportX4EPUB, importJSON, deduplicateSelf, duplicateCount,
     topCategories, subjects, subjectsForTop, parts,
+    classificationOrder, saveClassificationOrder,
     isAnonymous, userEmail, loginWithGoogle, handleLogout
   };
 }

@@ -30,7 +30,14 @@ const S = {
     cursor: 'pointer', fontSize: 14, fontWeight: active ? 700 : 400,
     whiteSpace: 'nowrap',
   }),
-  content: { flex: 1, padding: '24px 16px', maxWidth: 760, width: '100%', margin: '0 auto' },
+  content: (wide) => ({
+    flex: 1,
+    padding: '24px 16px',
+    maxWidth: wide ? 1120 : 760,
+    width: '100%',
+    margin: '0 auto',
+    boxSizing: 'border-box',
+  }),
   overlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -139,7 +146,7 @@ export default function App() {
           ))}
         </nav>
       </header>
-      <main style={S.content}>
+      <main style={S.content(tab === 'record')}>
         {(cards.loading || cards.syncing || cards.syncError) && (
           <div style={S.syncBanner(cards.syncError)}>
             {cards.syncError || (cards.loading ? '앱을 여는 중입니다. 오래 걸리면 로컬 카드로 먼저 시작합니다.' : '클라우드 동기화 중입니다. 학습은 바로 진행할 수 있습니다.')}
