@@ -3,7 +3,8 @@ import { answerLabel, answerPlaceholder, cardKindLabel, getCardKind, isAnswerCar
 import { DEFAULT_TOP_CATEGORY, getTopCategory, matchesTopCategory, normalizeClassificationOrder, partOrderKey, subjectOrderKey, sortLabelsByOrder } from '../utils/classification'
 
 const S = {
-  section: { background: 'rgba(15,23,42,0.6)', border: '1px solid #1e293b', borderRadius: 16, padding: 20, marginBottom: 16 },
+  section: { background: 'rgba(15,23,42,0.6)', border: '1px solid #1e293b', borderRadius: 16, padding: 20, marginBottom: 0 },
+  wideSection: { background: 'rgba(15,23,42,0.6)', border: '1px solid #1e293b', borderRadius: 16, padding: 20, marginBottom: 0, gridColumn: '1 / -1' },
   title: { color: '#e2e8f0', fontSize: 15, fontWeight: 700, marginBottom: 4 },
   sub: { color: '#64748b', fontSize: 12, marginBottom: 16, lineHeight: 1.5 },
   authCard: {
@@ -21,6 +22,66 @@ const S = {
     background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)',
     borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer'
   },
+  desktopGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
+    gap: 16,
+    alignItems: 'start',
+  },
+  fullRow: { gridColumn: '1 / -1' },
+  orderGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 10 },
+  orderPanel: { background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 12, padding: 12, minWidth: 0 },
+  orderListBody: { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto', paddingRight: 4 },
+  orderItem: { display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(15,23,42,0.7)', border: '1px solid #1e293b', borderRadius: 10, padding: '7px 8px', minHeight: 44 },
+  orderLabel: {
+    color: '#e2e8f0',
+    fontSize: 13,
+    fontWeight: 700,
+    lineHeight: 1.35,
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    wordBreak: 'keep-all',
+  },
+  orderMoveBtn: (disabled) => ({
+    width: 34,
+    height: 34,
+    minWidth: 34,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#1e293b',
+    border: '1px solid #334155',
+    borderRadius: 10,
+    color: disabled ? '#334155' : '#94a3b8',
+    fontSize: 18,
+    fontWeight: 800,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+  }),
+  manageTabs: {
+    display: 'flex',
+    gap: 8,
+    overflowX: 'auto',
+    background: 'rgba(15,23,42,0.55)',
+    border: '1px solid #1e293b',
+    borderRadius: 14,
+    padding: 8,
+    marginBottom: 16,
+  },
+  manageTab: (active) => ({
+    border: active ? '1px solid rgba(99,102,241,0.7)' : '1px solid transparent',
+    background: active ? 'rgba(99,102,241,0.18)' : 'transparent',
+    color: active ? '#e0e7ff' : '#94a3b8',
+    borderRadius: 10,
+    padding: '9px 12px',
+    fontSize: 13,
+    fontWeight: active ? 800 : 700,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  }),
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 },
   btn: (danger) => ({
     background: danger ? 'rgba(239,68,68,0.1)' : '#1e293b',
@@ -32,8 +93,17 @@ const S = {
   input: { flex: 1, background: '#0a0f1e', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px', color: '#e2e8f0', fontSize: 13, outline: 'none' },
   select: { background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '8px', fontSize: 13, cursor: 'pointer' },
   badge: { background: '#1e293b', color: '#64748b', fontSize: 11, borderRadius: 6, padding: '2px 8px' },
-  listContainer: { maxHeight: 350, overflowY: 'auto', background: '#0a0f1e', borderRadius: 10, padding: 8, border: '1px solid #1e293b' }
+  listContainer: { maxHeight: 520, overflowY: 'auto', background: '#0a0f1e', borderRadius: 10, padding: 8, border: '1px solid #1e293b' }
 }
+
+const MANAGE_SECTIONS = [
+  ['cards', '카드 목록'],
+  ['order', '분류 순서'],
+  ['create', '카드 추가'],
+  ['organize', '일괄 정리'],
+  ['x4', 'X4 내보내기'],
+  ['backup', '백업·삭제'],
+]
 
 function DataListInput({ id, value, onChange, placeholder, style, options }) {
   const safeOptions = Array.isArray(options) ? options : []
@@ -83,26 +153,29 @@ function moveItem(list, index, dir) {
 function OrderList({ title, sub, items, onChange }) {
   const safeItems = Array.isArray(items) ? items : []
   return (
-    <div style={{ background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 12, padding: 12 }}>
-      <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{title}</div>
+    <div style={S.orderPanel}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+        <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 800 }}>{title}</div>
+        <span style={S.badge}>{safeItems.length}개</span>
+      </div>
       {sub && <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.45, marginBottom: 10 }}>{sub}</div>}
       {safeItems.length === 0 ? (
         <div style={{ color: '#475569', fontSize: 12, padding: '14px 0', textAlign: 'center' }}>정렬할 항목이 없습니다.</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={S.orderListBody}>
           {safeItems.map((item, index) => (
-            <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(15,23,42,0.7)', border: '1px solid #1e293b', borderRadius: 10, padding: '8px 9px' }}>
+            <div key={`${item}-${index}`} style={S.orderItem}>
               <span style={{ color: '#475569', fontSize: 11, width: 24, textAlign: 'right' }}>{index + 1}</span>
-              <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 700, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item}</span>
+              <span title={item} style={S.orderLabel}>{item}</span>
               <button
                 disabled={index === 0}
                 onClick={() => onChange(moveItem(safeItems, index, -1))}
-                style={{ ...S.btn(false), padding: '6px 9px', color: index === 0 ? '#334155' : '#94a3b8', cursor: index === 0 ? 'not-allowed' : 'pointer' }}
+                style={S.orderMoveBtn(index === 0)}
               >↑</button>
               <button
                 disabled={index === safeItems.length - 1}
                 onClick={() => onChange(moveItem(safeItems, index, 1))}
-                style={{ ...S.btn(false), padding: '6px 9px', color: index === safeItems.length - 1 ? '#334155' : '#94a3b8', cursor: index === safeItems.length - 1 ? 'not-allowed' : 'pointer' }}
+                style={S.orderMoveBtn(index === safeItems.length - 1)}
               >↓</button>
             </div>
           ))}
@@ -161,6 +234,7 @@ export default function ManagePage({ cards }) {
   const [orderSubjectTop, setOrderSubjectTop] = useState('전체')
   const [orderPartTop, setOrderPartTop] = useState('전체')
   const [orderPartSubject, setOrderPartSubject] = useState('')
+  const [manageSection, setManageSection] = useState('cards')
 
   // ── 옵션 메모이제이션 ──
   const safeTopCategories = useMemo(
@@ -478,11 +552,29 @@ export default function ManagePage({ cards }) {
         </div>
       </div>
 
+      <div style={S.manageTabs} role="tablist" aria-label="관리 메뉴">
+        {MANAGE_SECTIONS.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={manageSection === id}
+            style={S.manageTab(manageSection === id)}
+            onClick={() => setManageSection(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div style={S.desktopGrid}>
+      {manageSection === 'order' && (
+      <>
       {/* 분류 표시 순서 설정 섹션 */}
-      <div style={S.section}>
+      <div style={S.wideSection}>
         <div style={S.title}>분류 표시 순서 설정</div>
-        <div style={S.sub}>학습, 기록형, 관리, X4 내보내기에서 보이는 대분류·과목·단원 순서를 고정합니다. 카드 내용은 바꾸지 않고 순서 설정만 저장합니다. 과목/단원의 "전체" 순서는 특정 대분류에 별도 순서가 없을 때 기본값으로 쓰입니다.</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+        <div style={S.sub}>학습, 기록형, 관리, X4 내보내기에서 보이는 대분류·과목·단원 순서를 고정합니다. 목록은 각 칸 안에서 스크롤됩니다.</div>
+        <div style={S.orderGrid}>
           <OrderList
             title="대분류 순서"
             sub="전체 화면의 가장 바깥 분류 순서입니다."
@@ -521,9 +613,13 @@ export default function ManagePage({ cards }) {
           </div>
         </div>
       </div>
+      </>
+      )}
 
+      {manageSection === 'create' && (
+      <>
       {/* ➕ 개별 카드 추가 생성 섹션 */}
-      <div style={S.section}>
+      <div style={S.wideSection}>
         <div style={S.title}>➕ 개별 카드 직접 추가</div>
         <div style={S.sub}>나만의 오답 노트나 수기 두문자 카드를 데이터베이스에 직접 생성합니다.</div>
         <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
@@ -562,9 +658,13 @@ export default function ManagePage({ cards }) {
           </button>
         </div>
       </div>
+      </>
+      )}
 
+      {manageSection === 'organize' && (
+      <>
       {/* 최근 AI 추출 묶음 정리 섹션 */}
-      <div style={S.section}>
+      <div style={S.wideSection}>
         <div style={S.title}>최근 AI 추출 묶음 정리</div>
         <div style={S.sub}>AI 추출 화면에서 저장한 카드 묶음만 골라 과목과 단원을 한 번에 다시 맞춥니다.</div>
         {extractionBatches.length === 0 ? (
@@ -601,7 +701,7 @@ export default function ManagePage({ cards }) {
       </div>
 
       {/* 📁 폴더(과목/단원) 이름 일괄 변경 섹션 */}
-      <div style={S.section}>
+      <div style={S.wideSection}>
         <div style={S.title}>📁 폴더(대분류/과목/단원) 구조 일괄 변경</div>
         <div style={S.sub}>기존 카드들의 대분류, 과목명, 단원명을 일괄 수정하여 다른 카테고리로 통합/이동시킵니다.</div>
         <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
@@ -632,9 +732,13 @@ export default function ManagePage({ cards }) {
           </button>
         </div>
       </div>
+      </>
+      )}
 
+      {manageSection === 'cards' && (
+      <>
       {/* 🔍 개별 카드 수정 및 삭제 목록 관리 섹션 */}
-      <div style={S.section}>
+      <div style={S.wideSection}>
         <div style={S.title}>🔍 내가 만든 개별 카드 목록 관리</div>
         <div style={S.sub}>보유 중인 커스텀 카드를 개별 검색하고 자유롭게 수정하거나 영구 삭제할 수 있습니다.</div>
         
@@ -724,7 +828,11 @@ export default function ManagePage({ cards }) {
           )}
         </div>
       </div>
+      </>
+      )}
 
+      {manageSection === 'x4' && (
+      <>
       {/* X4 리더용 파일 생성 섹션 */}
       <div style={S.section}>
         <div style={S.title}>Xteink X4용 내보내기</div>
@@ -751,7 +859,11 @@ export default function ManagePage({ cards }) {
           <button style={S.btn(false)} onClick={() => exportX4EPUB(x4Cards, x4Label)}>EPUB 만들기</button>
         </div>
       </div>
+      </>
+      )}
 
+      {manageSection === 'backup' && (
+      <>
       <div style={S.section}>
         <div style={S.title}>데이터 백업 및 백업 파일 로드</div>
         <div style={S.sub}>Firestore에 저장된 내 카드 데이터를 백업하거나 가져옵니다. 공개 배포본에는 기본 카드가 포함되지 않습니다.</div>
@@ -798,7 +910,10 @@ export default function ManagePage({ cards }) {
           </div>
         </div>
       </div>
+      </>
+      )}
 
+    </div>
     </div>
   )
 }

@@ -30,10 +30,10 @@ const S = {
     cursor: 'pointer', fontSize: 14, fontWeight: active ? 700 : 400,
     whiteSpace: 'nowrap',
   }),
-  content: (wide) => ({
+  content: (tab) => ({
     flex: 1,
     padding: '24px 16px',
-    maxWidth: wide ? 1120 : 760,
+    maxWidth: tab === 'manage' ? 1360 : tab === 'record' ? 1180 : 760,
     width: '100%',
     margin: '0 auto',
     boxSizing: 'border-box',
@@ -146,7 +146,7 @@ export default function App() {
           ))}
         </nav>
       </header>
-      <main style={S.content(tab === 'record')}>
+      <main style={S.content(tab)}>
         {(cards.loading || cards.syncing || cards.syncError) && (
           <div style={S.syncBanner(cards.syncError)}>
             {cards.syncError || (cards.loading ? '앱을 여는 중입니다. 오래 걸리면 로컬 카드로 먼저 시작합니다.' : '클라우드 동기화 중입니다. 학습은 바로 진행할 수 있습니다.')}
