@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { THEMES, DEFAULT_THEME, THEME_KEYS } from '../styles/themes'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { DEFAULT_THEME, THEME_KEYS, THEMES } from '../styles/themes'
 
 const STORAGE_KEY = 'app_theme'
 
@@ -15,7 +15,6 @@ function readSavedTheme() {
     if (saved && THEME_KEYS.includes(saved)) return saved
   } catch {}
 
-  // 사용자 시스템 환경설정 존중
   if (typeof window !== 'undefined' && window.matchMedia) {
     if (window.matchMedia('(prefers-contrast: more)').matches) return 'highContrast'
     if (window.matchMedia('(prefers-color-scheme: light)').matches) return 'light'
@@ -30,10 +29,8 @@ function applyThemeToDom(themeKey) {
   Object.entries(theme.vars).forEach(([key, value]) => {
     root.style.setProperty(key, value)
   })
-  // body 배경/텍스트 색은 즉시 반영되도록 강제
   document.body.style.background = theme.vars['--theme-bg']
   document.body.style.color = theme.vars['--theme-text']
-  // 상태 표시용 data 속성 - CSS에서 [data-theme="light"] 같은 셀렉터 사용 가능
   root.setAttribute('data-theme', themeKey)
 }
 

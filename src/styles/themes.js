@@ -1,18 +1,3 @@
-// 5개 테마 정의. CSS 변수 키와 의미는 모든 테마에서 동일하므로
-// 컴포넌트는 var(--theme-*) 만 참조하면 된다.
-//
-// 색 토큰 설계 원칙:
-//   - bg: 페이지 배경
-//   - panel: 카드/패널 배경 (반투명 가능)
-//   - elevated: 강조 패널
-//   - border: 1px 보더
-//   - text: 본문 텍스트
-//   - textMuted: 보조 텍스트
-//   - accent: 강조색 (학습 진행, 버튼)
-//   - accentSoft: 강조색 옅은 버전
-//   - codeBg: 두문자/코드 배경
-//   - success/warning/danger: 상태 색
-
 export const THEMES = {
   dark: {
     label: '다크',
@@ -36,7 +21,6 @@ export const THEMES = {
       '--theme-headerBg': 'rgba(10,15,30,0.95)',
     },
   },
-
   light: {
     label: '라이트',
     description: '눈에 편안한 밝은 테마',
@@ -59,10 +43,9 @@ export const THEMES = {
       '--theme-headerBg': 'rgba(248,250,252,0.95)',
     },
   },
-
   sepia: {
     label: '세피아',
-    description: '종이 같은 따뜻한 색감, 장시간 학습용',
+    description: '종이 같은 따뜻한 색감',
     vars: {
       '--theme-bg': '#f5efe0',
       '--theme-panel': '#fbf6e8',
@@ -82,10 +65,9 @@ export const THEMES = {
       '--theme-headerBg': 'rgba(245,239,224,0.95)',
     },
   },
-
   oled: {
     label: 'OLED 절전',
-    description: 'AMOLED 화면에서 배터리를 아끼는 순흑 배경',
+    description: '순흑 배경',
     vars: {
       '--theme-bg': '#000000',
       '--theme-panel': '#0a0a0a',
@@ -105,10 +87,9 @@ export const THEMES = {
       '--theme-headerBg': 'rgba(0,0,0,0.95)',
     },
   },
-
   highContrast: {
     label: '고대비',
-    description: '접근성 우선, 검정/노랑/흰색의 강한 대비',
+    description: '강한 대비',
     vars: {
       '--theme-bg': '#000000',
       '--theme-panel': '#000000',

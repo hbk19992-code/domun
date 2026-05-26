@@ -2,9 +2,12 @@ import { useState, useMemo, useCallback, useEffect } from 'react'
 import { isDue, dueLabel } from '../utils/srs'
 import { useTTS, ttsMnemonic, ttsDetail } from '../hooks/useTTS'
 import { useCloudSRS } from '../hooks/useCloudSRS'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { answerLabel, cardKindLabel, getCardKind, isAnswerCard, isCivilRecordGradingCard } from '../utils/cardType'
 import { gradeAnswer } from '../utils/grading'
 import { getTopCategory, matchesTopCategory } from '../utils/classification'
+import KeyboardHelp from './KeyboardHelp'
+import { FavoriteButton, RatingStars, getRating, isFavorite } from './CardRating'
 
 const STATUS = {
   unknown: { label: '모름',   emoji: '✗', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
@@ -122,6 +125,42 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
   )
 }
 
+function CardMetaHeader({ card, kind, updateCard }) {
+  const canRate = !!card?.id && typeof updateCard === 'function'
+  const cardKind = kind || getCardKind(card)
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      width: '100%',
+      marginBottom: 14,
+      gap: 8,
+      flexWrap: 'wrap',
+    }}>
+      <div style={{ ...S.badge, marginBottom: 0 }}>
+        {getTopCategory(card)} · {card.subject} · {card.part}
+        {card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(cardKind)}
+      </div>
+      {canRate && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <RatingStars
+            value={getRating(card)}
+            onChange={(n) => updateCard(card.id, { rating: n })}
+            size={14}
+          />
+          <FavoriteButton
+            active={isFavorite(card)}
+            onToggle={() => updateCard(card.id, { favorite: !isFavorite(card) })}
+            size={18}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function StudyPage({ cards }) {
   const { allCards, topCategories = [], subjects, subjectsForTop } = cards
   const [topCategory, setTopCategory] = useState('전체')
@@ -134,6 +173,9 @@ export default function StudyPage({ cards }) {
   const [flipped, setFlipped] = useState(false)
   const [shuffled, setShuffled] = useState(false)
   const [answerInputs, setAnswerInputs] = useState({})
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const [minRating, setMinRating] = useState(0)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   // ✨ 클라우드 진행률 동기화 적용
   const { srs, srsLoading, review: cloudReview } = useCloudSRS()
@@ -167,8 +209,10 @@ export default function StudyPage({ cards }) {
     if (part !== '전체') c = c.filter((x) => x.part === part)
     if (cardScope === 'record') c = c.filter((x) => isCivilRecordGradingCard(x))
     if (cardScope === 'normal') c = c.filter((x) => !isCivilRecordGradingCard(x))
+    if (favoritesOnly) c = c.filter((x) => isFavorite(x))
+    if (minRating > 0) c = c.filter((x) => getRating(x) >= minRating)
     return c
-  }, [allCards, topCategory, subject, part, cardScope])
+  }, [allCards, topCategory, subject, part, cardScope, favoritesOnly, minRating])
 
   const dueCards = useMemo(() => scoped.filter((c) => isDue(srs[getCardKey(c)])), [scoped, srs])
 
@@ -216,6 +260,20 @@ export default function StudyPage({ cards }) {
     }
     setTimeout(() => { setFlipped(false); setIdx((i) => Math.min(deck.length - 1, i + 1)) }, 280)
   }
+
+  useKeyboardShortcuts({
+    '1': () => { if (card) handleStatus('unknown') },
+    '2': () => { if (card) handleStatus('unsure') },
+    '3': () => { if (card) handleStatus('known') },
+    ' ': () => { if (card) setFlipped((f) => !f) },
+    ArrowRight: () => go(1),
+    ArrowLeft: () => go(-1),
+    n: () => go(1),
+    p: () => go(-1),
+    s: () => { setShuffled((v) => !v); resetView() },
+    '?': () => setHelpOpen((v) => !v),
+    '/': () => setHelpOpen((v) => !v),
+  }, { enabled: !!card })
 
   useEffect(() => {
     if (!listenMode || !playing || !card) return
@@ -328,6 +386,26 @@ export default function StudyPage({ cards }) {
           {partOptions.map((p) => <option key={p}>{p}</option>)}
         </select>
         <button style={S.shuffleBtn(shuffled)} onClick={() => { setShuffled((s) => !s); resetView() }}>🔀 섞기</button>
+        <button
+          style={S.shuffleBtn(favoritesOnly)}
+          onClick={() => { setFavoritesOnly((v) => !v); resetView() }}
+          title="즐겨찾기 카드만 보기"
+        >
+          {favoritesOnly ? '★ 즐겨찾기만' : '☆ 즐겨찾기'}
+        </button>
+        <select
+          style={S.select}
+          value={minRating}
+          onChange={(e) => { setMinRating(Number(e.target.value)); resetView() }}
+          title="최소 별점 필터"
+        >
+          <option value={0}>별점 전체</option>
+          <option value={1}>★ 1 이상</option>
+          <option value={2}>★ 2 이상</option>
+          <option value={3}>★ 3 이상</option>
+          <option value={4}>★ 4 이상</option>
+          <option value={5}>★ 5 만</option>
+        </select>
         <select style={S.select} value={cardScope} onChange={(e) => { setCardScope(e.target.value); resetView() }}>
           <option value="all">전체 카드 ({scopeStats.all})</option>
           <option value="normal">일반 카드 ({scopeStats.normal})</option>
@@ -394,6 +472,7 @@ export default function StudyPage({ cards }) {
           <button style={S.navBtn(safeIdx === deck.length - 1)} disabled={safeIdx === deck.length - 1} onClick={() => go(1)}>다음 →</button>
         </div>
       )}
+      <KeyboardHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   )
 }
@@ -448,11 +527,12 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
           cardKey={cardKey}
           value={answerInput}
           onChange={onAnswerInputChange}
+          updateCard={updateCard}
         />
       ) : (
         <div style={S.card(flipped, flipped ? entryOf(card)?.status : null)}
           onClick={() => !editOpen && setFlipped((f) => !f)}>
-          <div style={S.badge}>{getTopCategory(card)} · {card.subject} · {card.part}{card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(kind)}</div>
+          <CardMetaHeader card={card} kind={kind} updateCard={updateCard} />
           <div style={S.question}>{card.question}</div>
           {flipped ? (
             <>
@@ -522,7 +602,7 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
   )
 }
 
-function FillInAnswerCard({ card, cardKey, value, onChange }) {
+function FillInAnswerCard({ card, cardKey, value, onChange, updateCard }) {
   const [showResult, setShowResult] = useState(false)
   const [showAnswerOnly, setShowAnswerOnly] = useState(false)
 
@@ -551,7 +631,7 @@ function FillInAnswerCard({ card, cardKey, value, onChange }) {
       overflow: 'hidden',
     }}>
       <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid #1e293b' }}>
-        <div style={S.badge}>{getTopCategory(card)} · {card.subject} · {card.part}{card.sourceNumber ? ` · 원문 ${card.sourceNumber}` : ''} · {cardKindLabel(card)}</div>
+        <CardMetaHeader card={card} updateCard={updateCard} />
         <div style={{ ...S.question, marginBottom: 0 }}>{card.question}</div>
       </div>
 

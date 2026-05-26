@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { answerLabel, answerPlaceholder, cardKindLabel, getCardKind, isAnswerCard } from '../utils/cardType'
 import { DEFAULT_TOP_CATEGORY, getTopCategory, matchesTopCategory, normalizeClassificationOrder, partOrderKey, subjectOrderKey, sortLabelsByOrder } from '../utils/classification'
+import { ThemePickerCard } from './ThemePicker'
 
 const S = {
   section: { background: 'rgba(15,23,42,0.6)', border: '1px solid #1e293b', borderRadius: 16, padding: 20, marginBottom: 0 },
@@ -99,6 +100,7 @@ const S = {
 const MANAGE_SECTIONS = [
   ['cards', '카드 목록'],
   ['order', '분류 순서'],
+  ['theme', '화면 테마'],
   ['create', '카드 추가'],
   ['organize', '일괄 정리'],
   ['x4', 'X4 내보내기'],
@@ -659,6 +661,10 @@ export default function ManagePage({ cards }) {
         </div>
       </div>
       </>
+      )}
+
+      {manageSection === 'theme' && (
+        <ThemePickerCard />
       )}
 
       {manageSection === 'organize' && (

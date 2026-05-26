@@ -1,8 +1,3 @@
-// 즐겨찾기 토글 + 5점 별점 위젯.
-// - favorite: boolean → 별도 토글
-// - rating: 0~5 → 별 5개 클릭
-// 같은 클릭으로 setRating(n)을 호출하면 useCards.updateCard로 흘러간다.
-
 export function FavoriteButton({ active, onToggle, size = 18 }) {
   return (
     <button
@@ -11,8 +6,11 @@ export function FavoriteButton({ active, onToggle, size = 18 }) {
       aria-label={active ? '즐겨찾기 해제' : '즐겨찾기'}
       title={active ? '즐겨찾기 해제' : '즐겨찾기에 추가'}
       style={{
-        background: 'none', border: 'none', cursor: 'pointer',
-        padding: 4, lineHeight: 1,
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: 4,
+        lineHeight: 1,
         color: active ? '#fbbf24' : 'var(--theme-textMuted, #475569)',
         fontSize: size,
       }}
@@ -44,15 +42,18 @@ export function RatingStars({ value = 0, onChange, size = 14, readonly = false }
             key={n}
             onClick={(e) => {
               e.stopPropagation()
-              // 같은 별을 다시 누르면 해제 (3점에서 3점 다시 누르면 0점)
               onChange?.(safeValue === n ? 0 : n)
             }}
             aria-label={`별점 ${n}점`}
             aria-checked={safeValue === n}
             role="radio"
             style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: 1, lineHeight: 1, fontSize: size,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 1,
+              lineHeight: 1,
+              fontSize: size,
               color: filled ? '#fbbf24' : 'var(--theme-border, #334155)',
             }}
           >
@@ -64,7 +65,6 @@ export function RatingStars({ value = 0, onChange, size = 14, readonly = false }
   )
 }
 
-// 카드 객체 헬퍼
 export function isFavorite(card) {
   return !!(card && (card.favorite || card.starred))
 }

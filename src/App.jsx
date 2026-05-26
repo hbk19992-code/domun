@@ -4,6 +4,7 @@ import StudyPage from './components/StudyPage'
 import RecordPage from './components/RecordPage'
 import ExtractPage from './components/ExtractPage'
 import ManagePage from './components/ManagePage'
+import { ThemeSelectInline } from './components/ThemePicker'
 import { getShareParam, decodeCards, clearShareParam } from './utils/share'
 
 const TABS = [
@@ -14,14 +15,14 @@ const TABS = [
 ]
 
 const S = {
-  wrap: { minHeight: '100vh', background: '#0a0f1e', display: 'flex', flexDirection: 'column', overflowX: 'hidden' },
+  wrap: { minHeight: '100vh', background: 'var(--theme-bg, #0a0f1e)', display: 'flex', flexDirection: 'column', overflowX: 'hidden' },
   header: {
-    borderBottom: '1px solid #1e293b', padding: '0 16px',
+    borderBottom: '1px solid var(--theme-border, #1e293b)', padding: '0 16px',
     display: 'flex', alignItems: 'center', gap: 16,
     position: 'sticky', top: 0, zIndex: 100,
-    background: 'rgba(10,15,30,0.95)', backdropFilter: 'blur(12px)',
+    background: 'var(--theme-headerBg, rgba(10,15,30,0.95))', backdropFilter: 'blur(12px)',
   },
-  logo: { fontSize: 17, fontWeight: 800, color: '#e2e8f0', padding: '16px 0', whiteSpace: 'nowrap' },
+  logo: { fontSize: 17, fontWeight: 800, color: 'var(--theme-text, #e2e8f0)', padding: '16px 0', whiteSpace: 'nowrap' },
   tabs: { display: 'flex', gap: 2, overflowX: 'auto' },
   tab: (active) => ({
     padding: '16px 10px', border: 'none', background: 'none',
@@ -145,6 +146,9 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+          <ThemeSelectInline />
+        </div>
       </header>
       <main style={S.content(tab)}>
         {(cards.loading || cards.syncing || cards.syncError) && (
