@@ -11,7 +11,7 @@ export function FavoriteButton({ active, onToggle, size = 18 }) {
         cursor: 'pointer',
         padding: 4,
         lineHeight: 1,
-        color: active ? '#fbbf24' : 'var(--theme-textMuted, #475569)',
+        color: active ? 'var(--theme-star, #fbbf24)' : 'var(--theme-starMuted, #475569)',
         fontSize: size,
       }}
     >
@@ -32,7 +32,7 @@ export function RatingStars({ value = 0, onChange, size = 14, readonly = false }
         const filled = n <= safeValue
         if (readonly) {
           return (
-            <span key={n} style={{ color: filled ? '#fbbf24' : 'var(--theme-border, #334155)', fontSize: size }}>
+            <span key={n} style={{ color: filled ? 'var(--theme-star, #fbbf24)' : 'var(--theme-starMuted, #334155)', fontSize: size }}>
               {filled ? '★' : '☆'}
             </span>
           )
@@ -54,7 +54,7 @@ export function RatingStars({ value = 0, onChange, size = 14, readonly = false }
               padding: 1,
               lineHeight: 1,
               fontSize: size,
-              color: filled ? '#fbbf24' : 'var(--theme-border, #334155)',
+              color: filled ? 'var(--theme-star, #fbbf24)' : 'var(--theme-starMuted, #334155)',
             }}
           >
             {filled ? '★' : '☆'}

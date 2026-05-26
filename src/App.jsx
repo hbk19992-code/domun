@@ -26,8 +26,8 @@ const S = {
   tabs: { display: 'flex', gap: 2, overflowX: 'auto' },
   tab: (active) => ({
     padding: '16px 10px', border: 'none', background: 'none',
-    color: active ? '#818cf8' : '#475569',
-    borderBottom: active ? '2px solid #6366f1' : '2px solid transparent',
+    color: active ? 'var(--theme-accent, #818cf8)' : 'var(--theme-textDim, #475569)',
+    borderBottom: active ? '2px solid var(--theme-accentStrong, #6366f1)' : '2px solid transparent',
     cursor: 'pointer', fontSize: 14, fontWeight: active ? 700 : 400,
     whiteSpace: 'nowrap',
   }),
@@ -40,26 +40,26 @@ const S = {
     boxSizing: 'border-box',
   }),
   overlay: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+    position: 'fixed', inset: 0, background: 'var(--theme-overlay, rgba(0,0,0,0.7))',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     zIndex: 200, padding: 24,
   },
   modal: {
-    background: '#0f172a', border: '1px solid #1e293b', borderRadius: 20,
+    background: 'var(--theme-elevated, #0f172a)', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 20,
     padding: 32, width: '100%', maxWidth: 480,
   },
-  modalTitle: { color: '#e2e8f0', fontSize: 18, fontWeight: 800, marginBottom: 8 },
-  modalSub: { color: '#64748b', fontSize: 13, marginBottom: 24, lineHeight: 1.6 },
+  modalTitle: { color: 'var(--theme-text, #e2e8f0)', fontSize: 18, fontWeight: 800, marginBottom: 8 },
+  modalSub: { color: 'var(--theme-textDim, #64748b)', fontSize: 13, marginBottom: 24, lineHeight: 1.6 },
   modalRow: { display: 'flex', gap: 10 },
   modalBtn: (primary) => ({
     flex: 1, padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer',
-    background: primary ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b',
-    color: primary ? '#fff' : '#94a3b8', border: 'none',
+    background: primary ? 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))' : 'var(--theme-button, #1e293b)',
+    color: primary ? 'var(--theme-onAccent, #fff)' : 'var(--theme-textMuted, #94a3b8)', border: 'none',
   }),
   syncBanner: (error) => ({
-    background: error ? 'rgba(245,158,11,0.1)' : 'rgba(99,102,241,0.08)',
-    border: `1px solid ${error ? 'rgba(245,158,11,0.35)' : 'rgba(99,102,241,0.22)'}`,
-    color: error ? '#fbbf24' : '#94a3b8',
+    background: error ? 'var(--theme-warningSoft, rgba(245,158,11,0.14))' : 'var(--theme-accentSoft, rgba(99,102,241,0.15))',
+    border: `1px solid ${error ? 'var(--theme-warningSoft, rgba(245,158,11,0.14))' : 'var(--theme-accentSoft, rgba(99,102,241,0.15))'}`,
+    color: error ? 'var(--theme-warningText, #fbbf24)' : 'var(--theme-textMuted, #94a3b8)',
     borderRadius: 12,
     padding: '9px 12px',
     fontSize: 12,
@@ -75,18 +75,18 @@ function ShareImportModal({ sharedCards, onImport, onClose }) {
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔗</div>
         <div style={S.modalTitle}>공유된 카드셋</div>
         <div style={S.modalSub}>
-          <span style={{ color: '#818cf8', fontWeight: 700 }}>{sharedCards.length}개</span>의 카드가 공유되었습니다.<br />
+          <span style={{ color: 'var(--theme-accent, #818cf8)', fontWeight: 700 }}>{sharedCards.length}개</span>의 카드가 공유되었습니다.<br />
           {sharedCards[0] && `"${sharedCards[0].subject}" 등`} — 지금 가져오시겠어요?
         </div>
         <div style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {sharedCards.slice(0, 5).map((c, i) => (
-            <div key={i} style={{ background: '#1e293b', borderRadius: 8, padding: '8px 12px' }}>
-              <span style={{ color: '#818cf8', fontWeight: 700, fontSize: 13 }}>{c.mnemonic || c.answer}</span>
-              <span style={{ color: '#64748b', fontSize: 12, marginLeft: 8 }}>{c.question}</span>
+            <div key={i} style={{ background: 'var(--theme-button, #1e293b)', borderRadius: 8, padding: '8px 12px' }}>
+              <span style={{ color: 'var(--theme-accent, #818cf8)', fontWeight: 700, fontSize: 13 }}>{c.mnemonic || c.answer}</span>
+              <span style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, marginLeft: 8 }}>{c.question}</span>
             </div>
           ))}
           {sharedCards.length > 5 && (
-            <div style={{ color: '#334155', fontSize: 12, textAlign: 'center', padding: '4px 0' }}>
+            <div style={{ color: 'var(--theme-borderStrong, #334155)', fontSize: 12, textAlign: 'center', padding: '4px 0' }}>
               외 {sharedCards.length - 5}개 더...
             </div>
           )}
@@ -173,7 +173,7 @@ export default function App() {
       {importToast && (
         <div style={{
           position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          background: '#6366f1', color: '#fff', borderRadius: 10,
+          background: 'var(--theme-accentStrong, #6366f1)', color: 'var(--theme-onAccent, #fff)', borderRadius: 10,
           padding: '10px 24px', fontSize: 14, fontWeight: 600, zIndex: 300, whiteSpace: 'nowrap',
         }}>{importToast}</div>
       )}

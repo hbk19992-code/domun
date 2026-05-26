@@ -38,32 +38,32 @@ const FILTERS = [
 ]
 
 const S = {
-  empty: { textAlign: 'center', padding: '72px 0', color: '#475569' },
+  empty: { textAlign: 'center', padding: '72px 0', color: 'var(--theme-textDim, #475569)' },
   titleRow: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap' },
-  h2: { color: '#e2e8f0', fontSize: 21, fontWeight: 900, margin: 0 },
-  sub: { color: '#64748b', fontSize: 13, lineHeight: 1.55, marginTop: 5 },
+  h2: { color: 'var(--theme-text, #e2e8f0)', fontSize: 21, fontWeight: 900, margin: 0 },
+  sub: { color: 'var(--theme-textDim, #64748b)', fontSize: 13, lineHeight: 1.55, marginTop: 5 },
   filters: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 },
   select: {
-    background: '#0f172a', border: '1px solid #334155', borderRadius: 8,
-    color: '#94a3b8', padding: '8px 10px', fontSize: 13, cursor: 'pointer',
+    background: 'var(--theme-elevated, #0f172a)', border: '1px solid var(--theme-borderStrong, #334155)', borderRadius: 8,
+    color: 'var(--theme-textMuted, #94a3b8)', padding: '8px 10px', fontSize: 13, cursor: 'pointer',
   },
   statGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 16 },
-  stat: (active, color) => ({
-    background: active ? `${color}1f` : 'rgba(15,23,42,0.56)',
-    border: `1px solid ${active ? color : '#1e293b'}`,
+  stat: (active, color, bg) => ({
+    background: active ? bg : 'var(--theme-panelSoft, rgba(15,23,42,0.56))',
+    border: `1px solid ${active ? color : 'var(--theme-border, #1e293b)'}`,
     borderRadius: 12,
     padding: '12px 13px',
     cursor: 'pointer',
     textAlign: 'left',
   }),
   statNum: (color) => ({ color, fontSize: 21, lineHeight: 1, fontWeight: 900 }),
-  statLabel: { color: '#64748b', fontSize: 12, marginTop: 6 },
+  statLabel: { color: 'var(--theme-textDim, #64748b)', fontSize: 12, marginTop: 6 },
   shell: { display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-start' },
   list: {
     flex: '0 1 310px',
     minWidth: 260,
-    background: 'rgba(15,23,42,0.58)',
-    border: '1px solid #1e293b',
+    background: 'var(--theme-panelSoft, rgba(15,23,42,0.58))',
+    border: '1px solid var(--theme-border, #1e293b)',
     borderRadius: 16,
     padding: 10,
     maxHeight: 640,
@@ -71,8 +71,8 @@ const S = {
     boxSizing: 'border-box',
   },
   listItem: (active) => ({
-    background: active ? 'rgba(99,102,241,0.14)' : 'rgba(10,15,30,0.46)',
-    border: `1px solid ${active ? '#6366f1' : '#1e293b'}`,
+    background: active ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'var(--theme-input, rgba(10,15,30,0.46))',
+    border: `1px solid ${active ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-border, #1e293b)'}`,
     borderRadius: 12,
     padding: 11,
     marginBottom: 8,
@@ -80,27 +80,27 @@ const S = {
   }),
   badge: {
     display: 'inline-block',
-    background: '#1e293b',
-    color: '#64748b',
+    background: 'var(--theme-chip, #1e293b)',
+    color: 'var(--theme-textDim, #64748b)',
     borderRadius: 6,
     fontSize: 11,
     padding: '3px 8px',
     marginBottom: 10,
   },
-  panel: { flex: '1 1 560px', minWidth: 0, background: 'rgba(15,23,42,0.82)', border: '1px solid #1e293b', borderRadius: 18, overflow: 'hidden' },
-  panelHead: { padding: '18px 18px 14px', borderBottom: '1px solid #1e293b' },
-  question: { color: '#e2e8f0', fontSize: 17, fontWeight: 800, lineHeight: 1.55, wordBreak: 'keep-all' },
+  panel: { flex: '1 1 560px', minWidth: 0, background: 'var(--theme-panel, rgba(15,23,42,0.82))', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 18, overflow: 'hidden' },
+  panelHead: { padding: '18px 18px 14px', borderBottom: '1px solid var(--theme-border, #1e293b)' },
+  question: { color: 'var(--theme-text, #e2e8f0)', fontSize: 17, fontWeight: 800, lineHeight: 1.55, wordBreak: 'keep-all' },
   body: { padding: 18 },
   textarea: {
     width: '100%', boxSizing: 'border-box', minHeight: 300, resize: 'vertical',
-    background: '#0a0f1e', border: '1.5px solid #334155', borderRadius: 12,
-    color: '#e2e8f0', padding: '14px 15px', fontSize: 14, lineHeight: 1.7,
+    background: 'var(--theme-input, #0a0f1e)', border: '1.5px solid var(--theme-borderStrong, #334155)', borderRadius: 12,
+    color: 'var(--theme-text, #e2e8f0)', padding: '14px 15px', fontSize: 14, lineHeight: 1.7,
     fontFamily: 'inherit', outline: 'none',
   },
   btnRow: { display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' },
   btn: (primary, disabled) => ({
-    background: disabled ? '#1e293b' : primary ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b',
-    color: disabled ? '#475569' : primary ? '#fff' : '#94a3b8',
+    background: disabled ? 'var(--theme-button, #1e293b)' : primary ? 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))' : 'var(--theme-button, #1e293b)',
+    color: disabled ? 'var(--theme-textDim, #475569)' : primary ? 'var(--theme-onAccent, #fff)' : 'var(--theme-textMuted, #94a3b8)',
     border: 'none',
     borderRadius: 10,
     padding: '10px 14px',
@@ -109,10 +109,10 @@ const S = {
     cursor: disabled ? 'not-allowed' : 'pointer',
   }),
   keyword: {
-    background: 'rgba(251,191,36,0.1)',
-    border: '1px solid rgba(251,191,36,0.26)',
+    background: 'var(--theme-warningSoft, rgba(245,158,11,0.14))',
+    border: '1px solid var(--theme-warningSoft, rgba(245,158,11,0.14))',
     borderRadius: 12,
-    color: '#fbbf24',
+    color: 'var(--theme-warningText, #fbbf24)',
     padding: '10px 12px',
     fontSize: 13,
     lineHeight: 1.55,
@@ -121,9 +121,9 @@ const S = {
     whiteSpace: 'pre-wrap',
   },
   figure: {
-    background: '#fff',
-    color: '#0f172a',
-    border: '1px solid #e2e8f0',
+    background: 'var(--theme-figureBg, #fff)',
+    color: 'var(--theme-figureText, #0f172a)',
+    border: '1px solid var(--theme-figureBorder, #e2e8f0)',
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
@@ -133,19 +133,19 @@ const S = {
 }
 
 function statusLabel(status) {
-  if (status === 'passed') return ['통과', '#22c55e']
-  if (status === 'rewrite') return ['재작성 필요', '#f59e0b']
-  return ['미작성', '#64748b']
+  if (status === 'passed') return ['통과', 'var(--theme-success, #22c55e)', 'var(--theme-successSoft, rgba(34,197,94,0.14))']
+  if (status === 'rewrite') return ['재작성 필요', 'var(--theme-warning, #f59e0b)', 'var(--theme-warningSoft, rgba(245,158,11,0.14))']
+  return ['미작성', 'var(--theme-textDim, #64748b)', 'var(--theme-panelSoft, rgba(15,23,42,0.56))']
 }
 
 function DiffView({ result }) {
   if (!result) return null
   return (
     <div style={{
-      background: '#0a0f1e',
-      border: '1px solid #1e293b',
+      background: 'var(--theme-input, #0a0f1e)',
+      border: '1px solid var(--theme-border, #1e293b)',
       borderRadius: 12,
-      color: '#cbd5e1',
+      color: 'var(--theme-textMuted, #cbd5e1)',
       padding: 14,
       fontSize: 13,
       lineHeight: 1.75,
@@ -156,9 +156,9 @@ function DiffView({ result }) {
       {result.diff.map((part, index) => {
         if (part.type === 'same') return <span key={index}>{part.text}</span>
         if (part.type === 'add') {
-          return <span key={index} style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac', fontWeight: 800 }}>{part.text}</span>
+          return <span key={index} style={{ background: 'var(--theme-successSoft, rgba(34,197,94,0.14))', color: 'var(--theme-successText, #86efac)', fontWeight: 800 }}>{part.text}</span>
         }
-        return <span key={index} style={{ background: 'rgba(239,68,68,0.16)', color: '#fca5a5', textDecoration: 'line-through' }}>{part.text}</span>
+        return <span key={index} style={{ background: 'var(--theme-dangerSoft, rgba(239,68,68,0.14))', color: 'var(--theme-dangerText, #fca5a5)', textDecoration: 'line-through' }}>{part.text}</span>
       })}
     </div>
   )
@@ -301,14 +301,14 @@ export default function RecordPage({ cards }) {
     return (
       <div style={S.empty}>
         <div style={{ fontSize: 42, marginBottom: 14 }}>✎</div>
-        <div style={{ fontSize: 17, fontWeight: 800, color: '#64748b', marginBottom: 8 }}>기록형 카드가 없습니다</div>
-        <div style={{ color: '#334155', fontSize: 14 }}>민사기록형 카드가 추가되면 이 화면에서 답안 작성과 채점을 따로 진행할 수 있습니다.</div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--theme-textDim, #64748b)', marginBottom: 8 }}>기록형 카드가 없습니다</div>
+        <div style={{ color: 'var(--theme-borderStrong, #334155)', fontSize: 14 }}>민사기록형 카드가 추가되면 이 화면에서 답안 작성과 채점을 따로 진행할 수 있습니다.</div>
       </div>
     )
   }
 
   const currentStatus = attemptStatus(currentAttempt)
-  const [currentStatusText, currentStatusColor] = statusLabel(currentStatus)
+  const [currentStatusText, currentStatusColor, currentStatusBg] = statusLabel(currentStatus)
 
   return (
     <div>
@@ -317,7 +317,7 @@ export default function RecordPage({ cards }) {
           <h2 style={S.h2}>기록형</h2>
           <div style={S.sub}>답안을 먼저 쓰고, 채점 후에만 키워드와 모범답안을 확인합니다.</div>
         </div>
-        <div style={{ color: currentStatusColor, border: `1px solid ${currentStatusColor}`, borderRadius: 10, padding: '8px 12px', fontSize: 12, fontWeight: 900, background: `${currentStatusColor}18` }}>
+        <div style={{ color: currentStatusColor, border: `1px solid ${currentStatusColor}`, borderRadius: 10, padding: '8px 12px', fontSize: 12, fontWeight: 900, background: currentStatusBg }}>
           {currentStatusText}{currentAttempt?.accuracy != null ? ` · ${currentAttempt.accuracy}%` : ''}
         </div>
       </div>
@@ -339,10 +339,11 @@ export default function RecordPage({ cards }) {
 
       <div style={S.statGrid}>
         {FILTERS.map(([key, label]) => {
-          const color = key === 'passed' ? '#22c55e' : key === 'rewrite' ? '#f59e0b' : key === 'notStarted' ? '#64748b' : '#818cf8'
+          const color = key === 'passed' ? 'var(--theme-success, #22c55e)' : key === 'rewrite' ? 'var(--theme-warning, #f59e0b)' : key === 'notStarted' ? 'var(--theme-textDim, #64748b)' : 'var(--theme-accent, #818cf8)'
+          const bg = key === 'passed' ? 'var(--theme-successSoft, rgba(34,197,94,0.14))' : key === 'rewrite' ? 'var(--theme-warningSoft, rgba(245,158,11,0.14))' : key === 'notStarted' ? 'var(--theme-panelSoft, rgba(15,23,42,0.56))' : 'var(--theme-accentSoft, rgba(99,102,241,0.15))'
           const active = progressFilter === key
           return (
-            <div key={key} style={S.stat(active, color)} onClick={() => setProgressFilter(key)}>
+            <div key={key} style={S.stat(active, color, bg)} onClick={() => setProgressFilter(key)}>
               <div style={S.statNum(color)}>{stats[key]}</div>
               <div style={S.statLabel}>{label}</div>
             </div>
@@ -352,7 +353,7 @@ export default function RecordPage({ cards }) {
 
       {visibleCards.length === 0 ? (
         <div style={{ ...S.empty, padding: '42px 0' }}>
-          <div style={{ color: '#475569', fontSize: 14 }}>조건에 맞는 기록형 카드가 없습니다.</div>
+          <div style={{ color: 'var(--theme-textDim, #475569)', fontSize: 14 }}>조건에 맞는 기록형 카드가 없습니다.</div>
         </div>
       ) : (
         <div style={S.shell}>
@@ -366,10 +367,10 @@ export default function RecordPage({ cards }) {
                 <div key={key} style={S.listItem(active)} onClick={() => setActiveKey(key)}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 7 }}>
                     <span style={{ color, fontSize: 11, fontWeight: 900 }}>{label}</span>
-                    {attempt?.accuracy != null && <span style={{ color: '#64748b', fontSize: 11 }}>{attempt.accuracy}%</span>}
+                    {attempt?.accuracy != null && <span style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 11 }}>{attempt.accuracy}%</span>}
                   </div>
-                  <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 800, lineHeight: 1.35, marginBottom: 5 }}>{card.question}</div>
-                  <div style={{ color: '#475569', fontSize: 11 }}>{card.subject} · {card.part}</div>
+                  <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 13, fontWeight: 800, lineHeight: 1.35, marginBottom: 5 }}>{card.question}</div>
+                  <div style={{ color: 'var(--theme-textDim, #475569)', fontSize: 11 }}>{card.subject} · {card.part}</div>
                 </div>
               )
             })}
@@ -380,7 +381,7 @@ export default function RecordPage({ cards }) {
               <div style={S.badge}>{getTopCategory(currentCard)} · {currentCard.subject} · {currentCard.part}{currentCard.sourceNumber ? ` · 원문 ${currentCard.sourceNumber}` : ''} · {cardKindLabel(currentCard)}</div>
               <div style={S.question}>{currentCard.question}</div>
               {currentAttempt?.checkedAt && (
-                <div style={{ color: '#475569', fontSize: 11, marginTop: 8 }}>최근 채점: {formatDate(currentAttempt.checkedAt)}</div>
+                <div style={{ color: 'var(--theme-textDim, #475569)', fontSize: 11, marginTop: 8 }}>최근 채점: {formatDate(currentAttempt.checkedAt)}</div>
               )}
             </div>
 
@@ -405,9 +406,9 @@ export default function RecordPage({ cards }) {
                 <div>
                   {result && (
                     <div style={{
-                      background: result.accuracy >= 90 ? 'rgba(34,197,94,0.14)' : result.accuracy >= 70 ? 'rgba(245,158,11,0.14)' : 'rgba(239,68,68,0.14)',
-                      border: `1px solid ${result.accuracy >= 90 ? '#22c55e' : result.accuracy >= 70 ? '#f59e0b' : '#ef4444'}`,
-                      color: result.accuracy >= 90 ? '#86efac' : result.accuracy >= 70 ? '#fbbf24' : '#fca5a5',
+                      background: result.accuracy >= 90 ? 'var(--theme-successSoft, rgba(34,197,94,0.14))' : result.accuracy >= 70 ? 'var(--theme-warningSoft, rgba(245,158,11,0.14))' : 'var(--theme-dangerSoft, rgba(239,68,68,0.14))',
+                      border: `1px solid ${result.accuracy >= 90 ? 'var(--theme-success, #22c55e)' : result.accuracy >= 70 ? 'var(--theme-warning, #f59e0b)' : 'var(--theme-danger, #ef4444)'}`,
+                      color: result.accuracy >= 90 ? 'var(--theme-successText, #86efac)' : result.accuracy >= 70 ? 'var(--theme-warningText, #fbbf24)' : 'var(--theme-dangerText, #fca5a5)',
                       borderRadius: 12,
                       padding: '12px 14px',
                       textAlign: 'center',
@@ -423,16 +424,16 @@ export default function RecordPage({ cards }) {
 
                   {result && (
                     <>
-                      <div style={{ color: '#64748b', fontSize: 12, fontWeight: 800, marginBottom: 7 }}>내 답안과 모범답안 비교</div>
+                      <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, fontWeight: 800, marginBottom: 7 }}>내 답안과 모범답안 비교</div>
                       <DiffView result={result} />
                     </>
                   )}
 
-                  <details open style={{ background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 12, overflow: 'hidden' }}>
-                    <summary style={{ cursor: 'pointer', color: '#93c5fd', fontSize: 12, fontWeight: 900, padding: '10px 12px' }}>
+                  <details open style={{ background: 'var(--theme-input, #0a0f1e)', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 12, overflow: 'hidden' }}>
+                    <summary style={{ cursor: 'pointer', color: 'var(--theme-infoText, #7dd3fc)', fontSize: 12, fontWeight: 900, padding: '10px 12px' }}>
                       {answerLabel(currentCard)}
                     </summary>
-                    <div style={{ borderTop: '1px solid #1e293b', color: '#e2e8f0', padding: 13, fontSize: 13, lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>
+                    <div style={{ borderTop: '1px solid var(--theme-border, #1e293b)', color: 'var(--theme-text, #e2e8f0)', padding: 13, fontSize: 13, lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>
                       {currentCard.answer}
                     </div>
                   </details>

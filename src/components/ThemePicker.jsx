@@ -51,7 +51,7 @@ export function ThemePickerCard() {
               aria-pressed={active}
               style={{
                 background: active ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'var(--theme-elevated, #0f172a)',
-                border: `1.5px solid ${active ? 'var(--theme-accent, #6366f1)' : 'var(--theme-border, #1e293b)'}`,
+                border: `1.5px solid ${active ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-border, #1e293b)'}`,
                 borderRadius: 10,
                 padding: '10px 12px',
                 cursor: 'pointer',

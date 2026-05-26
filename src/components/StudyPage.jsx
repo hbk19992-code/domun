@@ -10,50 +10,50 @@ import KeyboardHelp from './KeyboardHelp'
 import { FavoriteButton, RatingStars, getRating, isFavorite } from './CardRating'
 
 const STATUS = {
-  unknown: { label: '모름',   emoji: '✗', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-  unsure:  { label: '헷갈림', emoji: '△', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
-  known:   { label: '앎',     emoji: '✓', color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
+  unknown: { label: '모름',   emoji: '✗', color: 'var(--theme-danger, #ef4444)', bg: 'var(--theme-dangerSoft, rgba(239,68,68,0.14))' },
+  unsure:  { label: '헷갈림', emoji: '△', color: 'var(--theme-warning, #f59e0b)', bg: 'var(--theme-warningSoft, rgba(245,158,11,0.14))' },
+  known:   { label: '앎',     emoji: '✓', color: 'var(--theme-success, #22c55e)', bg: 'var(--theme-successSoft, rgba(34,197,94,0.12))' },
 }
 const STATUS_KEYS = ['unknown', 'unsure', 'known']
 function getCardKey(card) { return card.id ?? card.question }
 
 const S = {
-  empty: { textAlign: 'center', padding: '80px 0', color: '#475569' },
+  empty: { textAlign: 'center', padding: '80px 0', color: 'var(--theme-textDim, #475569)' },
   reviewBanner: {
-    background: 'linear-gradient(135deg, rgba(99,102,241,0.18), rgba(139,92,246,0.12))',
-    border: '1px solid rgba(99,102,241,0.35)', borderRadius: 14,
+    background: 'var(--theme-accentSoft, rgba(99,102,241,0.15))',
+    border: '1px solid var(--theme-accentStrong, #6366f1)', borderRadius: 14,
     padding: '14px 18px', marginBottom: 16,
     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
   },
   reviewBtn: {
-    background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff',
+    background: 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))', color: 'var(--theme-onAccent, #fff)',
     border: 'none', borderRadius: 10, padding: '9px 18px',
     fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
   },
   filters: { display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' },
   select: {
-    background: '#0f172a', border: '1px solid #334155', borderRadius: 8,
-    color: '#94a3b8', padding: '7px 10px', fontSize: 13, cursor: 'pointer',
+    background: 'var(--theme-elevated, #0f172a)', border: '1px solid var(--theme-borderStrong, #334155)', borderRadius: 8,
+    color: 'var(--theme-textMuted, #94a3b8)', padding: '7px 10px', fontSize: 13, cursor: 'pointer',
   },
   shuffleBtn: (on) => ({
-    background: on ? 'rgba(99,102,241,0.15)' : 'none',
-    border: `1px solid ${on ? '#6366f1' : '#334155'}`, borderRadius: 8,
-    color: on ? '#818cf8' : '#64748b', padding: '7px 12px', fontSize: 13, cursor: 'pointer',
+    background: on ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'transparent',
+    border: `1px solid ${on ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-borderStrong, #334155)'}`, borderRadius: 8,
+    color: on ? 'var(--theme-accent, #818cf8)' : 'var(--theme-textDim, #64748b)', padding: '7px 12px', fontSize: 13, cursor: 'pointer',
   }),
   progressRow: { display: 'flex', gap: 8, marginBottom: 16 },
-  progItem: (color, active) => ({
+  progItem: (color, active, bg) => ({
     flex: 1, padding: '8px 10px', borderRadius: 10,
-    background: active ? `${color}22` : 'rgba(15,23,42,0.5)',
-    border: `1px solid ${active ? color : '#1e293b'}`,
+    background: active ? bg : 'var(--theme-panelSoft, rgba(15,23,42,0.5))',
+    border: `1px solid ${active ? color : 'var(--theme-border, #1e293b)'}`,
     textAlign: 'center', cursor: 'pointer',
   }),
   progNum: (color) => ({ color, fontSize: 18, fontWeight: 800, lineHeight: 1 }),
-  progLabel: { color: '#64748b', fontSize: 11, marginTop: 3 },
+  progLabel: { color: 'var(--theme-textDim, #64748b)', fontSize: 11, marginTop: 3 },
   card: (flipped, statusKey) => {
     const st = statusKey ? STATUS[statusKey] : null
     return {
-      background: st ? st.bg : (flipped ? 'rgba(99,102,241,0.1)' : 'rgba(15,23,42,0.8)'),
-      border: `1px solid ${st ? st.color : (flipped ? '#6366f1' : '#1e293b')}`,
+      background: st ? st.bg : (flipped ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'var(--theme-panel, rgba(15,23,42,0.8))'),
+      border: `1px solid ${st ? st.color : (flipped ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-border, #1e293b)')}`,
       borderRadius: 20, padding: '34px 26px', minHeight: 230, cursor: 'pointer',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       textAlign: 'center', userSelect: 'none', marginBottom: 14,
@@ -62,52 +62,52 @@ const S = {
     }
   },
   badge: {
-    display: 'inline-block', background: '#1e293b', color: '#64748b',
+    display: 'inline-block', background: 'var(--theme-chip, #1e293b)', color: 'var(--theme-textDim, #64748b)',
     fontSize: 11, borderRadius: 6, padding: '3px 10px', marginBottom: 14,
   },
-  question: { color: '#e2e8f0', fontSize: 17, fontWeight: 700, marginBottom: 18, lineHeight: 1.5 },
-  mnemonic: { color: '#818cf8', fontSize: 26, fontWeight: 800, letterSpacing: 2, marginBottom: 12 },
-  detail: { color: '#94a3b8', fontSize: 13, lineHeight: 1.7 },
-  hint: { color: '#334155', fontSize: 12, marginTop: 12 },
-  dueTag: { color: '#475569', fontSize: 11, marginTop: 10 },
+  question: { color: 'var(--theme-text, #e2e8f0)', fontSize: 17, fontWeight: 700, marginBottom: 18, lineHeight: 1.5 },
+  mnemonic: { color: 'var(--theme-accent, #818cf8)', fontSize: 26, fontWeight: 800, letterSpacing: 2, marginBottom: 12 },
+  detail: { color: 'var(--theme-textMuted, #94a3b8)', fontSize: 13, lineHeight: 1.7 },
+  hint: { color: 'var(--theme-borderStrong, #334155)', fontSize: 12, marginTop: 12 },
+  dueTag: { color: 'var(--theme-textDim, #475569)', fontSize: 11, marginTop: 10 },
   statusRow: { display: 'flex', gap: 10, marginBottom: 16 },
   statusBtn: (key, current) => {
     const st = STATUS[key]
     const active = current === key
     return {
       flex: 1, padding: '11px 0',
-      background: active ? st.bg : 'rgba(15,23,42,0.5)',
-      border: `1.5px solid ${active ? st.color : '#1e293b'}`,
-      borderRadius: 12, color: active ? st.color : '#475569',
+      background: active ? st.bg : 'var(--theme-panelSoft, rgba(15,23,42,0.5))',
+      border: `1.5px solid ${active ? st.color : 'var(--theme-border, #1e293b)'}`,
+      borderRadius: 12, color: active ? st.color : 'var(--theme-textDim, #475569)',
       fontSize: 13, fontWeight: active ? 700 : 400, cursor: 'pointer',
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
     }
   },
   nav: { display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center' },
   navBtn: (disabled) => ({
-    background: disabled ? '#0a0f1e' : '#1e293b',
-    border: '1px solid #334155', borderRadius: 10,
-    color: disabled ? '#1e293b' : '#94a3b8',
+    background: disabled ? 'var(--theme-input, #0a0f1e)' : 'var(--theme-button, #1e293b)',
+    border: '1px solid var(--theme-borderStrong, #334155)', borderRadius: 10,
+    color: disabled ? 'var(--theme-border, #1e293b)' : 'var(--theme-textMuted, #94a3b8)',
     padding: '10px 24px', fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
   }),
-  counter: { color: '#475569', fontSize: 13, minWidth: 80, textAlign: 'center' },
+  counter: { color: 'var(--theme-textDim, #475569)', fontSize: 13, minWidth: 80, textAlign: 'center' },
   listenBar: {
-    background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)',
+    background: 'var(--theme-accentSoft, rgba(99,102,241,0.15))', border: '1px solid var(--theme-accentStrong, #6366f1)',
     borderRadius: 14, padding: '14px 16px', marginBottom: 16,
   },
   listenTop: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 },
   playBtn: (playing) => ({
     width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-    background: playing ? 'rgba(239,68,68,0.15)' : 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-    border: playing ? '1.5px solid #ef4444' : 'none',
-    color: playing ? '#ef4444' : '#fff', fontSize: 18, cursor: 'pointer',
+    background: playing ? 'var(--theme-dangerSoft, rgba(239,68,68,0.14))' : 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))',
+    border: playing ? '1.5px solid var(--theme-danger, #ef4444)' : 'none',
+    color: playing ? 'var(--theme-danger, #ef4444)' : 'var(--theme-onAccent, #fff)', fontSize: 18, cursor: 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   }),
   speedRow: { display: 'flex', gap: 6 },
   speedPill: (active) => ({
-    background: active ? '#6366f1' : 'rgba(15,23,42,0.6)',
-    border: `1px solid ${active ? '#6366f1' : '#334155'}`,
-    color: active ? '#fff' : '#64748b',
+    background: active ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-panelSoft, rgba(15,23,42,0.6))',
+    border: `1px solid ${active ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-borderStrong, #334155)'}`,
+    color: active ? 'var(--theme-onAccent, #fff)' : 'var(--theme-textDim, #64748b)',
     borderRadius: 7, padding: '5px 10px', fontSize: 12,
     cursor: 'pointer', fontWeight: active ? 700 : 400,
   }),
@@ -319,8 +319,8 @@ export default function StudyPage({ cards }) {
     return (
       <div style={S.empty}>
         <div style={{ fontSize: 44, marginBottom: 14 }}>📭</div>
-        <div style={{ fontSize: 17, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>카드가 없습니다</div>
-        <div style={{ color: '#334155', fontSize: 14 }}>"AI 추출" 탭에서 교재 PDF를 올려 카드를 만들어보세요</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--theme-textDim, #64748b)', marginBottom: 8 }}>카드가 없습니다</div>
+        <div style={{ color: 'var(--theme-borderStrong, #334155)', fontSize: 14 }}>"AI 추출" 탭에서 교재 PDF를 올려 카드를 만들어보세요</div>
       </div>
     )
   }
@@ -328,7 +328,7 @@ export default function StudyPage({ cards }) {
   return (
     <div>
       {srsLoading && (
-        <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.22)', color: '#94a3b8', borderRadius: 12, padding: '9px 12px', fontSize: 12, marginBottom: 14 }}>
+        <div style={{ background: 'var(--theme-accentSoft, rgba(99,102,241,0.15))', border: '1px solid var(--theme-accentSoft, rgba(99,102,241,0.15))', color: 'var(--theme-textMuted, #94a3b8)', borderRadius: 12, padding: '9px 12px', fontSize: 12, marginBottom: 14 }}>
           학습 진행률을 동기화 중입니다. 카드는 바로 넘길 수 있습니다.
         </div>
       )}
@@ -336,16 +336,16 @@ export default function StudyPage({ cards }) {
       {mode === 'all' && dueCards.length > 0 && (
         <div style={S.reviewBanner}>
           <div>
-            <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 700 }}>🔔 오늘 복습할 카드 {dueCards.length}개</div>
-            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>복습 시점이 된 카드만 모아서 학습합니다</div>
+            <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 14, fontWeight: 700 }}>🔔 오늘 복습할 카드 {dueCards.length}개</div>
+            <div style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 12, marginTop: 2 }}>복습 시점이 된 카드만 모아서 학습합니다</div>
           </div>
           <button style={S.reviewBtn} onClick={() => { setMode('review'); resetView() }}>복습 시작</button>
         </div>
       )}
       {mode === 'review' && (
         <div style={S.reviewBanner}>
-          <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 700 }}>🔔 복습 모드 — {deck.length}개 남음</div>
-          <button style={{ ...S.reviewBtn, background: '#1e293b' }} onClick={() => { setMode('all'); resetView() }}>전체 학습으로</button>
+          <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 14, fontWeight: 700 }}>🔔 복습 모드 — {deck.length}개 남음</div>
+          <button style={{ ...S.reviewBtn, background: 'var(--theme-button, #1e293b)' }} onClick={() => { setMode('all'); resetView() }}>전체 학습으로</button>
         </div>
       )}
 
@@ -355,16 +355,16 @@ export default function StudyPage({ cards }) {
             const st = STATUS[key]
             const active = statusFilter === key
             return (
-              <div key={key} style={S.progItem(st.color, active)}
+              <div key={key} style={S.progItem(st.color, active, st.bg)}
                 onClick={() => { setStatusFilter(active ? '전체' : key); resetView() }}>
                 <div style={S.progNum(st.color)}>{stats[key]}</div>
                 <div style={S.progLabel}>{st.label}</div>
               </div>
             )
           })}
-          <div style={{ ...S.progItem('#475569', statusFilter === '전체'), flex: 0.6 }}
+          <div style={{ ...S.progItem('var(--theme-textDim, #475569)', statusFilter === '전체', 'var(--theme-accentSoft, rgba(99,102,241,0.15))'), flex: 0.6 }}
             onClick={() => { setStatusFilter('전체'); resetView() }}>
-            <div style={{ color: '#475569', fontSize: 18, fontWeight: 800, lineHeight: 1 }}>{stats.total}</div>
+            <div style={{ color: 'var(--theme-textDim, #475569)', fontSize: 18, fontWeight: 800, lineHeight: 1 }}>{stats.total}</div>
             <div style={S.progLabel}>전체</div>
           </div>
         </div>
@@ -424,14 +424,14 @@ export default function StudyPage({ cards }) {
           <div style={S.listenTop}>
             <button style={S.playBtn(playing)} onClick={togglePlay}>{playing ? '⏸' : '▶'}</button>
             <div style={{ flex: 1 }}>
-              <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 700 }}>
+              <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 14, fontWeight: 700 }}>
                 {playing ? '재생 중 — 자동으로 뒤집고 이어갑니다' : '음성 학습'}
               </div>
-              <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>질문을 읽은 뒤 자동으로 뒤집고 정답을 읽습니다. 상태 버튼을 누르면 바로 다음 카드로 이어집니다.</div>
+              <div style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 12, marginTop: 2 }}>질문을 읽은 뒤 자동으로 뒤집고 정답을 읽습니다. 상태 버튼을 누르면 바로 다음 카드로 이어집니다.</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: '#64748b', fontSize: 12 }}>속도</span>
+            <span style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12 }}>속도</span>
             <div style={S.speedRow}>
               {[0.8, 1, 1.2, 1.5].map((r) => (
                 <button key={r} style={S.speedPill(rate === r)} onClick={() => setRate(r)}>{r}×</button>
@@ -444,7 +444,7 @@ export default function StudyPage({ cards }) {
       {deck.length === 0 && (
         <div style={{ ...S.empty, padding: '50px 0' }}>
           <div style={{ fontSize: 36, marginBottom: 10 }}>🎉</div>
-          <div style={{ color: '#64748b', fontSize: 15 }}>
+          <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 15 }}>
             {mode === 'review' ? '복습할 카드를 모두 마쳤습니다!' : '해당하는 카드가 없습니다'}
           </div>
           {mode === 'review' && (
@@ -497,8 +497,8 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
   const inp = (key, placeholder, multi) => {
     const style = {
       width: '100%', boxSizing: 'border-box',
-      background: '#0a0f1e', border: '1px solid #334155', borderRadius: 7,
-      padding: '8px 10px', color: '#e2e8f0', fontSize: 13,
+      background: 'var(--theme-input, #0a0f1e)', border: '1px solid var(--theme-borderStrong, #334155)', borderRadius: 7,
+      padding: '8px 10px', color: 'var(--theme-text, #e2e8f0)', fontSize: 13,
       fontFamily: 'inherit', outline: 'none', marginBottom: 6,
       resize: multi ? 'vertical' : 'none',
     }
@@ -539,7 +539,7 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
               {isAnswer ? (
                 <>
                   {card.mnemonic && <div style={{ ...S.mnemonic, fontSize: 18, letterSpacing: 0 }}>{card.mnemonic}</div>}
-                  <div style={{ ...S.detail, fontSize: 15, color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>{card.answer}</div>
+                  <div style={{ ...S.detail, fontSize: 15, color: 'var(--theme-text, #e2e8f0)', whiteSpace: 'pre-wrap' }}>{card.answer}</div>
                 </>
               ) : (
                 <>
@@ -572,27 +572,27 @@ function CardWithEdit({ card, flipped, setFlipped, entryOf, handleStatus, update
         <button onClick={() => { setDraft({ ...card }); setEditOpen((o) => !o) }}
           title={canEdit ? '편집' : '저장된 카드만 편집할 수 있습니다'}
           style={{
-            background: editOpen ? 'rgba(99,102,241,0.15)' : 'rgba(15,23,42,0.5)',
-            border: `1.5px solid ${editOpen ? '#6366f1' : '#1e293b'}`,
-            borderRadius: 12, color: editOpen ? '#818cf8' : (canEdit ? '#475569' : '#1e293b'),
+            background: editOpen ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'var(--theme-panelSoft, rgba(15,23,42,0.5))',
+            border: `1.5px solid ${editOpen ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-border, #1e293b)'}`,
+            borderRadius: 12, color: editOpen ? 'var(--theme-accent, #818cf8)' : (canEdit ? 'var(--theme-textDim, #475569)' : 'var(--theme-border, #1e293b)'),
             fontSize: 18, cursor: canEdit ? 'pointer' : 'not-allowed', padding: '0 14px', flexShrink: 0,
           }}>✎</button>
       </div>
 
       {editOpen && (
-        <div style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid #334155', borderRadius: 16, padding: 18, marginBottom: 14 }}>
-          <div style={{ color: '#94a3b8', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>카드 편집</div>
+        <div style={{ background: 'var(--theme-panelSoft, rgba(15,23,42,0.6))', border: '1px solid var(--theme-borderStrong, #334155)', borderRadius: 16, padding: 18, marginBottom: 14 }}>
+          <div style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>카드 편집</div>
           <div style={{ display: 'flex', gap: 6 }}>{inp('topCategory', '대분류')}{inp('subject', '과목')}{inp('part', '단원')}</div>
           {inp('sourceNumber', '원문 번호')}
           {inp('question', '질문')}
           {isAnswer ? inp('answer', answerLabel(kind), true) : <>{inp('mnemonic', '두문자')}{inp('detail', '설명', true)}</>}
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             <button onClick={handleSave} style={{
-              flex: 1, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff',
+              flex: 1, background: 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))', color: 'var(--theme-onAccent, #fff)',
               border: 'none', borderRadius: 10, padding: '10px', fontSize: 13, cursor: 'pointer', fontWeight: 700,
             }}>저장</button>
             <button onClick={() => setEditOpen(false)} style={{
-              background: '#1e293b', color: '#94a3b8', border: 'none',
+              background: 'var(--theme-button, #1e293b)', color: 'var(--theme-textMuted, #94a3b8)', border: 'none',
               borderRadius: 10, padding: '10px 18px', fontSize: 13, cursor: 'pointer',
             }}>취소</button>
           </div>
@@ -623,14 +623,14 @@ function FillInAnswerCard({ card, cardKey, value, onChange, updateCard }) {
 
   return (
     <div style={{
-      background: 'rgba(15,23,42,0.86)',
-      border: '1px solid #1e293b',
+      background: 'var(--theme-panelSoft, rgba(15,23,42,0.6))',
+      border: '1px solid var(--theme-border, #1e293b)',
       borderRadius: 20,
       minHeight: 280,
       marginBottom: 14,
       overflow: 'hidden',
     }}>
-      <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid #1e293b' }}>
+      <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid var(--theme-border, #1e293b)' }}>
         <CardMetaHeader card={card} updateCard={updateCard} />
         <div style={{ ...S.question, marginBottom: 0 }}>{card.question}</div>
       </div>
@@ -638,7 +638,7 @@ function FillInAnswerCard({ card, cardKey, value, onChange, updateCard }) {
       <div style={{ padding: 18 }}>
         {card.figure && (
           <div
-            style={{ background: '#fff', color: '#0f172a', borderRadius: 10, padding: 12, marginBottom: 12, overflowX: 'auto' }}
+            style={{ background: 'var(--theme-figureBg, #fff)', color: 'var(--theme-figureText, #0f172a)', border: '1px solid var(--theme-figureBorder, #e2e8f0)', borderRadius: 10, padding: 12, marginBottom: 12, overflowX: 'auto' }}
             dangerouslySetInnerHTML={{ __html: card.figure }}
           />
         )}
@@ -653,10 +653,10 @@ function FillInAnswerCard({ card, cardKey, value, onChange, updateCard }) {
               boxSizing: 'border-box',
               minHeight: 160,
               resize: 'vertical',
-              background: '#0a0f1e',
-              border: '1.5px solid #334155',
+              background: 'var(--theme-input, #0a0f1e)',
+              border: '1.5px solid var(--theme-borderStrong, #334155)',
               borderRadius: 12,
-              color: '#e2e8f0',
+              color: 'var(--theme-text, #e2e8f0)',
               padding: '13px 14px',
               fontSize: 14,
               lineHeight: 1.65,
@@ -669,9 +669,9 @@ function FillInAnswerCard({ card, cardKey, value, onChange, updateCard }) {
         {showResult && result && (
           <div>
             <div style={{
-              background: result.isPerfect ? 'rgba(34,197,94,0.14)' : result.accuracy >= 90 ? 'rgba(59,130,246,0.14)' : result.accuracy >= 70 ? 'rgba(245,158,11,0.14)' : 'rgba(239,68,68,0.14)',
-              border: `1px solid ${result.isPerfect ? '#22c55e' : result.accuracy >= 90 ? '#3b82f6' : result.accuracy >= 70 ? '#f59e0b' : '#ef4444'}`,
-              color: result.isPerfect ? '#86efac' : result.accuracy >= 90 ? '#93c5fd' : result.accuracy >= 70 ? '#fbbf24' : '#fca5a5',
+              background: result.isPerfect ? 'var(--theme-successSoft, rgba(34,197,94,0.14))' : result.accuracy >= 90 ? 'var(--theme-infoSoft, rgba(14,165,233,0.14))' : result.accuracy >= 70 ? 'var(--theme-warningSoft, rgba(245,158,11,0.14))' : 'var(--theme-dangerSoft, rgba(239,68,68,0.14))',
+              border: `1px solid ${result.isPerfect ? 'var(--theme-success, #22c55e)' : result.accuracy >= 90 ? 'var(--theme-info, #38bdf8)' : result.accuracy >= 70 ? 'var(--theme-warning, #f59e0b)' : 'var(--theme-danger, #ef4444)'}`,
+              color: result.isPerfect ? 'var(--theme-successText, #86efac)' : result.accuracy >= 90 ? 'var(--theme-infoText, #7dd3fc)' : result.accuracy >= 70 ? 'var(--theme-warningText, #fbbf24)' : 'var(--theme-dangerText, #fca5a5)',
               borderRadius: 12,
               padding: '12px 14px',
               textAlign: 'center',
@@ -684,10 +684,10 @@ function FillInAnswerCard({ card, cardKey, value, onChange, updateCard }) {
 
             {card.mnemonic && (
               <div style={{
-                background: 'rgba(251,191,36,0.1)',
-                border: '1px solid rgba(251,191,36,0.26)',
+                background: 'var(--theme-warningSoft, rgba(245,158,11,0.14))',
+                border: '1px solid var(--theme-warningSoft, rgba(245,158,11,0.14))',
                 borderRadius: 12,
-                color: '#fbbf24',
+                color: 'var(--theme-warningText, #fbbf24)',
                 padding: '10px 12px',
                 fontSize: 13,
                 lineHeight: 1.55,
@@ -701,14 +701,14 @@ function FillInAnswerCard({ card, cardKey, value, onChange, updateCard }) {
 
             {!result.isPerfect && (
               <>
-                <div style={{ color: '#64748b', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
                   빨간 취소선은 잘못 쓴 부분, 초록 표시는 빠뜨린 정답 부분입니다.
                 </div>
                 <div style={{
-                  background: '#0a0f1e',
-                  border: '1px solid #1e293b',
+                  background: 'var(--theme-input, #0a0f1e)',
+                  border: '1px solid var(--theme-border, #1e293b)',
                   borderRadius: 12,
-                  color: '#cbd5e1',
+                  color: 'var(--theme-textMuted, #cbd5e1)',
                   padding: 14,
                   fontSize: 13,
                   lineHeight: 1.75,
@@ -719,19 +719,19 @@ function FillInAnswerCard({ card, cardKey, value, onChange, updateCard }) {
                   {result.diff.map((part, index) => {
                     if (part.type === 'same') return <span key={index}>{part.text}</span>
                     if (part.type === 'add') {
-                      return <span key={index} style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac', fontWeight: 800 }}>{part.text}</span>
+                      return <span key={index} style={{ background: 'var(--theme-successSoft, rgba(34,197,94,0.14))', color: 'var(--theme-successText, #86efac)', fontWeight: 800 }}>{part.text}</span>
                     }
-                    return <span key={index} style={{ background: 'rgba(239,68,68,0.16)', color: '#fca5a5', textDecoration: 'line-through' }}>{part.text}</span>
+                    return <span key={index} style={{ background: 'var(--theme-dangerSoft, rgba(239,68,68,0.14))', color: 'var(--theme-dangerText, #fca5a5)', textDecoration: 'line-through' }}>{part.text}</span>
                   })}
                 </div>
               </>
             )}
 
-            <details style={{ background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 12, overflow: 'hidden' }}>
-              <summary style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 12, fontWeight: 700, padding: '10px 12px' }}>
+            <details style={{ background: 'var(--theme-input, #0a0f1e)', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 12, overflow: 'hidden' }}>
+              <summary style={{ cursor: 'pointer', color: 'var(--theme-textMuted, #94a3b8)', fontSize: 12, fontWeight: 700, padding: '10px 12px' }}>
                 정답 원문 보기
               </summary>
-              <div style={{ borderTop: '1px solid #1e293b', color: '#e2e8f0', padding: 12, fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+              <div style={{ borderTop: '1px solid var(--theme-border, #1e293b)', color: 'var(--theme-text, #e2e8f0)', padding: 12, fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
                 {card.answer}
               </div>
             </details>
@@ -740,22 +740,22 @@ function FillInAnswerCard({ card, cardKey, value, onChange, updateCard }) {
 
         {showAnswerOnly && (
           <div style={{
-            background: '#0a0f1e',
-            border: '1px solid #1e293b',
+            background: 'var(--theme-input, #0a0f1e)',
+            border: '1px solid var(--theme-border, #1e293b)',
             borderRadius: 12,
-            color: '#e2e8f0',
+            color: 'var(--theme-text, #e2e8f0)',
             padding: 14,
             fontSize: 13,
             lineHeight: 1.7,
             whiteSpace: 'pre-wrap',
           }}>
-            <div style={{ color: '#93c5fd', fontSize: 12, fontWeight: 800, marginBottom: 8 }}>{answerLabel(card)}</div>
+            <div style={{ color: 'var(--theme-infoText, #7dd3fc)', fontSize: 12, fontWeight: 800, marginBottom: 8 }}>{answerLabel(card)}</div>
             {card.mnemonic && (
               <div style={{
-                background: 'rgba(251,191,36,0.1)',
-                border: '1px solid rgba(251,191,36,0.26)',
+                background: 'var(--theme-warningSoft, rgba(245,158,11,0.14))',
+                border: '1px solid var(--theme-warningSoft, rgba(245,158,11,0.14))',
                 borderRadius: 10,
-                color: '#fbbf24',
+                color: 'var(--theme-warningText, #fbbf24)',
                 padding: '9px 11px',
                 fontSize: 13,
                 lineHeight: 1.55,
@@ -781,8 +781,8 @@ function FillInAnswerCard({ card, cardKey, value, onChange, updateCard }) {
                 style={{
                   flex: 1,
                   minWidth: 130,
-                  background: String(value || '').trim() ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b',
-                  color: String(value || '').trim() ? '#fff' : '#475569',
+                  background: String(value || '').trim() ? 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))' : 'var(--theme-button, #1e293b)',
+                  color: String(value || '').trim() ? 'var(--theme-onAccent, #fff)' : 'var(--theme-textDim, #475569)',
                   border: 'none',
                   borderRadius: 10,
                   padding: '10px 14px',
@@ -797,8 +797,8 @@ function FillInAnswerCard({ card, cardKey, value, onChange, updateCard }) {
           ) : (
             <button onClick={resetMode} style={{
               flex: 1,
-              background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-              color: '#fff',
+              background: 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))',
+              color: 'var(--theme-onAccent, #fff)',
               border: 'none',
               borderRadius: 10,
               padding: '10px 14px',

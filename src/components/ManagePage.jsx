@@ -4,13 +4,13 @@ import { DEFAULT_TOP_CATEGORY, getTopCategory, matchesTopCategory, normalizeClas
 import { ThemePickerCard } from './ThemePicker'
 
 const S = {
-  section: { background: 'rgba(15,23,42,0.6)', border: '1px solid #1e293b', borderRadius: 16, padding: 20, marginBottom: 0 },
-  wideSection: { background: 'rgba(15,23,42,0.6)', border: '1px solid #1e293b', borderRadius: 16, padding: 20, marginBottom: 0, gridColumn: '1 / -1' },
-  title: { color: '#e2e8f0', fontSize: 15, fontWeight: 700, marginBottom: 4 },
-  sub: { color: '#64748b', fontSize: 12, marginBottom: 16, lineHeight: 1.5 },
+  section: { background: 'var(--theme-panelSoft, rgba(15,23,42,0.6))', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 16, padding: 20, marginBottom: 0 },
+  wideSection: { background: 'var(--theme-panelSoft, rgba(15,23,42,0.6))', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 16, padding: 20, marginBottom: 0, gridColumn: '1 / -1' },
+  title: { color: 'var(--theme-text, #e2e8f0)', fontSize: 15, fontWeight: 700, marginBottom: 4 },
+  sub: { color: 'var(--theme-textDim, #64748b)', fontSize: 12, marginBottom: 16, lineHeight: 1.5 },
   authCard: {
-    background: 'linear-gradient(135deg, #1e1b4b, #0f172a)',
-    border: '1px solid #312e81', borderRadius: 16, padding: 20, marginBottom: 20,
+    background: 'var(--theme-accentSoft, rgba(99,102,241,0.15))',
+    border: '1px solid var(--theme-accentStrong, #6366f1)', borderRadius: 16, padding: 20, marginBottom: 20,
     display: 'flex', flexDirection: 'column', gap: 14
   },
   authFlex: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
@@ -20,7 +20,7 @@ const S = {
     display: 'flex', alignItems: 'center', gap: 8, transition: 'background 0.2s'
   },
   logoutBtn: {
-    background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)',
+    background: 'var(--theme-dangerSoft, rgba(239,68,68,0.14))', color: 'var(--theme-danger, #ef4444)', border: '1px solid var(--theme-dangerSoft, rgba(239,68,68,0.14))',
     borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer'
   },
   desktopGrid: {
@@ -31,11 +31,11 @@ const S = {
   },
   fullRow: { gridColumn: '1 / -1' },
   orderGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 10 },
-  orderPanel: { background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 12, padding: 12, minWidth: 0 },
+  orderPanel: { background: 'var(--theme-input, #0a0f1e)', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 12, padding: 12, minWidth: 0 },
   orderListBody: { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto', paddingRight: 4 },
-  orderItem: { display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(15,23,42,0.7)', border: '1px solid #1e293b', borderRadius: 10, padding: '7px 8px', minHeight: 44 },
+  orderItem: { display: 'flex', alignItems: 'center', gap: 8, background: 'var(--theme-elevated, #0f172a)', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 10, padding: '7px 8px', minHeight: 44 },
   orderLabel: {
-    color: '#e2e8f0',
+    color: 'var(--theme-text, #e2e8f0)',
     fontSize: 13,
     fontWeight: 700,
     lineHeight: 1.35,
@@ -54,10 +54,10 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: '#1e293b',
-    border: '1px solid #334155',
+    background: 'var(--theme-button, #1e293b)',
+    border: '1px solid var(--theme-borderStrong, #334155)',
     borderRadius: 10,
-    color: disabled ? '#334155' : '#94a3b8',
+    color: disabled ? 'var(--theme-borderStrong, #334155)' : 'var(--theme-textMuted, #94a3b8)',
     fontSize: 18,
     fontWeight: 800,
     cursor: disabled ? 'not-allowed' : 'pointer',
@@ -66,16 +66,16 @@ const S = {
     display: 'flex',
     gap: 8,
     overflowX: 'auto',
-    background: 'rgba(15,23,42,0.55)',
-    border: '1px solid #1e293b',
+    background: 'var(--theme-panelSoft, rgba(15,23,42,0.55))',
+    border: '1px solid var(--theme-border, #1e293b)',
     borderRadius: 14,
     padding: 8,
     marginBottom: 16,
   },
   manageTab: (active) => ({
-    border: active ? '1px solid rgba(99,102,241,0.7)' : '1px solid transparent',
-    background: active ? 'rgba(99,102,241,0.18)' : 'transparent',
-    color: active ? '#e0e7ff' : '#94a3b8',
+    border: active ? '1px solid var(--theme-accentStrong, #6366f1)' : '1px solid transparent',
+    background: active ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'transparent',
+    color: active ? 'var(--theme-accentText, #e0e7ff)' : 'var(--theme-textMuted, #94a3b8)',
     borderRadius: 10,
     padding: '9px 12px',
     fontSize: 13,
@@ -85,16 +85,16 @@ const S = {
   }),
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 },
   btn: (danger) => ({
-    background: danger ? 'rgba(239,68,68,0.1)' : '#1e293b',
-    border: `1px solid ${danger ? 'rgba(239,68,68,0.2)' : '#334155'}`,
-    borderRadius: 10, color: danger ? '#ef4444' : '#94a3b8',
+    background: danger ? 'var(--theme-dangerSoft, rgba(239,68,68,0.14))' : 'var(--theme-button, #1e293b)',
+    border: `1px solid ${danger ? 'var(--theme-dangerSoft, rgba(239,68,68,0.14))' : 'var(--theme-borderStrong, #334155)'}`,
+    borderRadius: 10, color: danger ? 'var(--theme-danger, #ef4444)' : 'var(--theme-textMuted, #94a3b8)',
     padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'center'
   }),
   row: { display: 'flex', gap: 8, marginTop: 10 },
-  input: { flex: 1, background: '#0a0f1e', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px', color: '#e2e8f0', fontSize: 13, outline: 'none' },
-  select: { background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '8px', fontSize: 13, cursor: 'pointer' },
-  badge: { background: '#1e293b', color: '#64748b', fontSize: 11, borderRadius: 6, padding: '2px 8px' },
-  listContainer: { maxHeight: 520, overflowY: 'auto', background: '#0a0f1e', borderRadius: 10, padding: 8, border: '1px solid #1e293b' }
+  input: { flex: 1, background: 'var(--theme-input, #0a0f1e)', border: '1px solid var(--theme-borderStrong, #334155)', borderRadius: 8, padding: '8px 12px', color: 'var(--theme-text, #e2e8f0)', fontSize: 13, outline: 'none' },
+  select: { background: 'var(--theme-elevated, #0f172a)', border: '1px solid var(--theme-borderStrong, #334155)', borderRadius: 8, color: 'var(--theme-textMuted, #94a3b8)', padding: '8px', fontSize: 13, cursor: 'pointer' },
+  badge: { background: 'var(--theme-chip, #1e293b)', color: 'var(--theme-textDim, #64748b)', fontSize: 11, borderRadius: 6, padding: '2px 8px' },
+  listContainer: { maxHeight: 520, overflowY: 'auto', background: 'var(--theme-input, #0a0f1e)', borderRadius: 10, padding: 8, border: '1px solid var(--theme-border, #1e293b)' }
 }
 
 const MANAGE_SECTIONS = [
@@ -157,17 +157,17 @@ function OrderList({ title, sub, items, onChange }) {
   return (
     <div style={S.orderPanel}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-        <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 800 }}>{title}</div>
+        <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 13, fontWeight: 800 }}>{title}</div>
         <span style={S.badge}>{safeItems.length}개</span>
       </div>
-      {sub && <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.45, marginBottom: 10 }}>{sub}</div>}
+      {sub && <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 11, lineHeight: 1.45, marginBottom: 10 }}>{sub}</div>}
       {safeItems.length === 0 ? (
-        <div style={{ color: '#475569', fontSize: 12, padding: '14px 0', textAlign: 'center' }}>정렬할 항목이 없습니다.</div>
+        <div style={{ color: 'var(--theme-textDim, #475569)', fontSize: 12, padding: '14px 0', textAlign: 'center' }}>정렬할 항목이 없습니다.</div>
       ) : (
         <div style={S.orderListBody}>
           {safeItems.map((item, index) => (
             <div key={`${item}-${index}`} style={S.orderItem}>
-              <span style={{ color: '#475569', fontSize: 11, width: 24, textAlign: 'right' }}>{index + 1}</span>
+              <span style={{ color: 'var(--theme-textDim, #475569)', fontSize: 11, width: 24, textAlign: 'right' }}>{index + 1}</span>
               <span title={item} style={S.orderLabel}>{item}</span>
               <button
                 disabled={index === 0}
@@ -534,10 +534,10 @@ export default function ManagePage({ cards }) {
       <div style={S.authCard}>
         <div style={S.authFlex}>
           <div>
-            <div style={{ color: '#fff', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ color: 'var(--theme-onAccent, #fff)', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
               {isAnonymous ? '☁️ 임시 클라우드 보관함' : '🔒 안전한 계정 동기화 완료'}
             </div>
-            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4, lineHeight: 1.4 }}>
+            <div style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 12, marginTop: 4, lineHeight: 1.4 }}>
               {isAnonymous 
                 ? '구글 계정을 연동하면 스마트폰, 태블릿 등 다른 기기에서도 진도를 이어갈 수 있습니다.'
                 : `${userEmail} 계정으로 로그인되어 실시간 클라우드 백업이 유지됩니다.`
@@ -640,7 +640,7 @@ export default function ManagePage({ cards }) {
               ['case', '판례'],
               ['statute', '조문'],
             ].map(([type, label]) => (
-              <label key={type} style={{ color: '#e2e8f0', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+              <label key={type} style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                 <input type="radio" checked={newType === type} onChange={() => setNewType(type)} /> {label}
               </label>
             ))}
@@ -648,14 +648,14 @@ export default function ManagePage({ cards }) {
 
           {newType === 'mnemonic' ? (
             <>
-              <input style={{...S.input, color: '#818cf8', fontWeight: 700}} placeholder="두문자 기입 (예: 이.가.게.귀.위)" value={newMnemonic} onChange={e => setNewMnemonic(e.target.value)} />
+              <input style={{...S.input, color: 'var(--theme-accent, #818cf8)', fontWeight: 700}} placeholder="두문자 기입 (예: 이.가.게.귀.위)" value={newMnemonic} onChange={e => setNewMnemonic(e.target.value)} />
               <textarea style={{...S.input, minHeight: 55, resize: 'vertical'}} placeholder="각 두문자의 상세 설명을 입력하세요 (①이행기 / ②가능...)" value={newDetail} onChange={e => setNewDetail(e.target.value)} />
             </>
           ) : (
             <textarea style={{...S.input, minHeight: 80, resize: 'vertical'}} placeholder={answerPlaceholder(newType)} value={newAnswer} onChange={e => setNewAnswer(e.target.value)} />
           )}
 
-          <button style={{...S.btn(false), background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', marginTop: 4}} onClick={handleAddCardSubmit}>
+          <button style={{...S.btn(false), background: 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))', color: 'var(--theme-onAccent, #fff)', marginTop: 4}} onClick={handleAddCardSubmit}>
             ✨ 새 카드 생성 및 저장
           </button>
         </div>
@@ -674,7 +674,7 @@ export default function ManagePage({ cards }) {
         <div style={S.title}>최근 AI 추출 묶음 정리</div>
         <div style={S.sub}>AI 추출 화면에서 저장한 카드 묶음만 골라 과목과 단원을 한 번에 다시 맞춥니다.</div>
         {extractionBatches.length === 0 ? (
-          <div style={{ color: '#475569', fontSize: 13, background: '#0a0f1e', border: '1px solid #1e293b', borderRadius: 10, padding: 12 }}>
+          <div style={{ color: 'var(--theme-textDim, #475569)', fontSize: 13, background: 'var(--theme-input, #0a0f1e)', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 10, padding: 12 }}>
             아직 저장된 AI 추출 묶음이 없습니다. 추출 결과를 내 카드 서재에 추가하면 여기에 표시됩니다.
           </div>
         ) : (
@@ -686,17 +686,17 @@ export default function ManagePage({ cards }) {
                 </option>
               ))}
             </select>
-            <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.55 }}>
+            <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, lineHeight: 1.55 }}>
               현재 분류: {summarizeLabels(activeBatch?.topCategories, '대분류 없음')} / {summarizeLabels(activeBatch?.subjects, '과목 없음')} / {summarizeLabels(activeBatch?.parts, '단원 없음')} · 대상 {activeBatchCards.length}개
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span style={{ color: '#818cf8', fontSize: 12, width: 45, fontWeight: 700 }}>변경 후</span>
+              <span style={{ color: 'var(--theme-accent, #818cf8)', fontSize: 12, width: 45, fontWeight: 700 }}>변경 후</span>
               <DataListInput id="batch-top-dl" value={batchNewTop} onChange={e => setBatchNewTop(e.target.value)} placeholder="새 대분류 (공백 시 유지)" style={S.input} options={safeTopCategories} />
               <DataListInput id="batch-sub-dl" value={batchNewSub} onChange={e => setBatchNewSub(e.target.value)} placeholder="새 과목명 (공백 시 유지)" style={S.input} options={subjects} />
               <DataListInput id="batch-part-dl" value={batchNewPart} onChange={e => setBatchNewPart(e.target.value)} placeholder="새 단원명 (공백 시 유지)" style={S.input} options={batchPartOptions} />
             </div>
             <button
-              style={{ ...S.btn(false), background: canBatchRename ? 'rgba(14,165,233,0.16)' : '#1e293b', color: canBatchRename ? '#7dd3fc' : '#64748b', border: canBatchRename ? '1px solid rgba(14,165,233,0.45)' : '1px solid #334155' }}
+              style={{ ...S.btn(false), background: canBatchRename ? 'var(--theme-infoSoft, rgba(14,165,233,0.14))' : 'var(--theme-button, #1e293b)', color: canBatchRename ? 'var(--theme-infoText, #7dd3fc)' : 'var(--theme-textDim, #64748b)', border: canBatchRename ? '1px solid var(--theme-info, #38bdf8)' : '1px solid var(--theme-borderStrong, #334155)' }}
               disabled={!canBatchRename}
               onClick={handleBatchRename}
             >
@@ -712,7 +712,7 @@ export default function ManagePage({ cards }) {
         <div style={S.sub}>기존 카드들의 대분류, 과목명, 단원명을 일괄 수정하여 다른 카테고리로 통합/이동시킵니다.</div>
         <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ color: '#64748b', fontSize: 12, width: 45 }}>대상 폴더</span>
+            <span style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, width: 45 }}>대상 폴더</span>
             <select style={{ ...S.select, flex: 1 }} value={editOldTop} onChange={(e) => { setEditOldTop(e.target.value); setEditOldSub('전체'); setEditOldPart('전체'); }}>
               <option>전체</option>{safeTopCategories.map(s => <option key={s}>{s}</option>)}
             </select>
@@ -724,13 +724,13 @@ export default function ManagePage({ cards }) {
             </select>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ color: '#818cf8', fontSize: 12, width: 45, fontWeight: 700 }}>변경 후</span>
+            <span style={{ color: 'var(--theme-accent, #818cf8)', fontSize: 12, width: 45, fontWeight: 700 }}>변경 후</span>
             <input style={S.input} placeholder="새 대분류 (공백 시 유지)" value={editNewTop} onChange={e => setEditNewTop(e.target.value)} />
             <input style={S.input} placeholder="새 과목명 (공백 시 유지)" value={editNewSub} onChange={e => setEditNewSub(e.target.value)} />
             <input style={S.input} placeholder="새 단원명 (공백 시 유지)" value={editNewPart} onChange={e => setEditNewPart(e.target.value)} />
           </div>
           <button 
-            style={{ ...S.btn(false), background: targetEditCount > 0 ? 'rgba(99,102,241,0.2)' : '#1e293b', color: targetEditCount > 0 ? '#818cf8' : '#64748b', border: targetEditCount > 0 ? '1px solid #6366f1' : '1px solid #334155' }} 
+            style={{ ...S.btn(false), background: targetEditCount > 0 ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'var(--theme-button, #1e293b)', color: targetEditCount > 0 ? 'var(--theme-accent, #818cf8)' : 'var(--theme-textDim, #64748b)', border: targetEditCount > 0 ? '1px solid var(--theme-accentStrong, #6366f1)' : '1px solid var(--theme-borderStrong, #334155)' }} 
             disabled={targetEditCount === 0 || (!editNewTop.trim() && !editNewSub.trim() && !editNewPart.trim())} 
             onClick={handleRename}
           >
@@ -765,7 +765,7 @@ export default function ManagePage({ cards }) {
         {/* 유저 카드 실시간 목록 출력창 */}
         <div style={S.listContainer}>
           {filteredUserCards.length === 0 ? (
-            <div style={{ color: '#475569', textAlign: 'center', padding: '30px 0', fontSize: 13 }}>조건에 맞는 유저 카드가 존재하지 않습니다.</div>
+            <div style={{ color: 'var(--theme-textDim, #475569)', textAlign: 'center', padding: '30px 0', fontSize: 13 }}>조건에 맞는 유저 카드가 존재하지 않습니다.</div>
           ) : (
             filteredUserCards.map(c => {
               const isEditing = editingCardId === c.id;
@@ -775,7 +775,7 @@ export default function ManagePage({ cards }) {
               if (isEditing) {
                 const editKind = getCardKind(editCardDraft || c);
                 return (
-                  <div key={c.id} style={{ border: '1px solid #6366f1', background: '#0f172a', padding: 12, borderRadius: 10, marginBottom: 8 }}>
+                  <div key={c.id} style={{ border: '1px solid var(--theme-accentStrong, #6366f1)', background: 'var(--theme-elevated, #0f172a)', padding: 12, borderRadius: 10, marginBottom: 8 }}>
                     <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                       <DataListInput id={`edit-top-dl-${c.id}`} value={getTopCategory(editCardDraft)} onChange={e => setEditCardDraft({...editCardDraft, topCategory: e.target.value})} placeholder="대분류" style={S.input} options={safeTopCategories} />
                       <DataListInput id={`edit-sub-dl-${c.id}`} value={editCardDraft.subject} onChange={e => setEditCardDraft({...editCardDraft, subject: e.target.value})} placeholder="과목" style={S.input} options={subjects} />
@@ -787,12 +787,12 @@ export default function ManagePage({ cards }) {
                       <textarea style={{...S.input, width: '100%', marginBottom: 6, minHeight: 50, resize: 'vertical'}} value={editCardDraft.answer} onChange={e => setEditCardDraft({...editCardDraft, answer: e.target.value})} placeholder={answerLabel(editKind)} />
                     ) : (
                       <>
-                        <input style={{...S.input, width: '100%', marginBottom: 6, color: '#818cf8', fontWeight: 700}} value={editCardDraft.mnemonic} onChange={e => setEditCardDraft({...editCardDraft, mnemonic: e.target.value})} placeholder="두문자" />
+                        <input style={{...S.input, width: '100%', marginBottom: 6, color: 'var(--theme-accent, #818cf8)', fontWeight: 700}} value={editCardDraft.mnemonic} onChange={e => setEditCardDraft({...editCardDraft, mnemonic: e.target.value})} placeholder="두문자" />
                         <textarea style={{...S.input, width: '100%', marginBottom: 6, minHeight: 50, resize: 'vertical'}} value={editCardDraft.detail} onChange={e => setEditCardDraft({...editCardDraft, detail: e.target.value})} placeholder="두문자 상세 설명" />
                       </>
                     )}
                     <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                      <button style={{...S.btn(false), flex: 1, padding: '8px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', border: 'none'}} onClick={async () => {
+                      <button style={{...S.btn(false), flex: 1, padding: '8px', background: 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))', color: 'var(--theme-onAccent, #fff)', border: 'none'}} onClick={async () => {
                         await cards.updateCard(c.id, editCardDraft);
                         setEditingCardId(null);
                       }}>수정 완료</button>
@@ -803,26 +803,26 @@ export default function ManagePage({ cards }) {
               }
 
               return (
-                <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15,23,42,0.5)', border: '1px solid #1e293b', padding: '10px 14px', borderRadius: 10, marginBottom: 6, gap: 10 }}>
+                <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--theme-panelSoft, rgba(15,23,42,0.6))', border: '1px solid var(--theme-border, #1e293b)', padding: '10px 14px', borderRadius: 10, marginBottom: 6, gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', gap: 5, marginBottom: 4, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 10, background: 'rgba(14,165,233,0.12)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.28)', padding: '1px 6px', borderRadius: 4 }}>{getTopCategory(c)}</span>
-                      <span style={{ fontSize: 10, background: '#1e293b', color: '#94a3b8', padding: '1px 6px', borderRadius: 4 }}>{c.subject}</span>
-                      <span style={{ fontSize: 10, background: '#1e293b', color: '#64748b', padding: '1px 6px', borderRadius: 4 }}>{c.part}</span>
-                      {c.sourceNumber && <span style={{ fontSize: 10, background: 'rgba(14,165,233,0.12)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.28)', padding: '1px 6px', borderRadius: 4 }}>원문 {c.sourceNumber}</span>}
-                      <span style={{ fontSize: 10, background: isAnswer ? 'rgba(245,158,11,0.15)' : 'rgba(99,102,241,0.15)', color: isAnswer ? '#f59e0b' : '#818cf8', padding: '1px 6px', borderRadius: 4 }}>{cardKindLabel(kind)}</span>
+                      <span style={{ fontSize: 10, background: 'var(--theme-infoSoft, rgba(14,165,233,0.14))', color: 'var(--theme-infoText, #7dd3fc)', border: '1px solid var(--theme-info, #38bdf8)', padding: '1px 6px', borderRadius: 4 }}>{getTopCategory(c)}</span>
+                      <span style={{ fontSize: 10, background: 'var(--theme-button, #1e293b)', color: 'var(--theme-textMuted, #94a3b8)', padding: '1px 6px', borderRadius: 4 }}>{c.subject}</span>
+                      <span style={{ fontSize: 10, background: 'var(--theme-button, #1e293b)', color: 'var(--theme-textDim, #64748b)', padding: '1px 6px', borderRadius: 4 }}>{c.part}</span>
+                      {c.sourceNumber && <span style={{ fontSize: 10, background: 'var(--theme-infoSoft, rgba(14,165,233,0.14))', color: 'var(--theme-infoText, #7dd3fc)', border: '1px solid var(--theme-info, #38bdf8)', padding: '1px 6px', borderRadius: 4 }}>원문 {c.sourceNumber}</span>}
+                      <span style={{ fontSize: 10, background: isAnswer ? 'var(--theme-warningSoft, rgba(245,158,11,0.14))' : 'var(--theme-accentSoft, rgba(99,102,241,0.15))', color: isAnswer ? 'var(--theme-warning, #f59e0b)' : 'var(--theme-accent, #818cf8)', padding: '1px 6px', borderRadius: 4 }}>{cardKindLabel(kind)}</span>
                     </div>
-                    <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.question}</div>
-                    <div style={{ color: isAnswer ? '#94a3b8' : '#818cf8', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.question}</div>
+                    <div style={{ color: isAnswer ? 'var(--theme-textMuted, #94a3b8)' : 'var(--theme-accent, #818cf8)', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {isAnswer ? c.answer : `${c.mnemonic} - ${c.detail}`}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
-                    <button style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 14 }} onClick={() => {
+                    <button style={{ background: 'none', border: 'none', color: 'var(--theme-textMuted, #94a3b8)', cursor: 'pointer', fontSize: 14 }} onClick={() => {
                       setEditingCardId(c.id);
                       setEditCardDraft({...c});
                     }} title="편집">✎</button>
-                    <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }} onClick={async () => {
+                    <button style={{ background: 'none', border: 'none', color: 'var(--theme-danger, #ef4444)', cursor: 'pointer', fontSize: 14 }} onClick={async () => {
                       if (window.confirm('이 카드를 데이터베이스에서 영구 삭제하시겠습니까?')) {
                         await cards.deleteCard(c.id);
                       }

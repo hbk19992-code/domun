@@ -990,9 +990,9 @@ async function extractPdfWithPageRanges(apiKey, base64, pageCount, systemPrompt,
 }
 
 const TYPE_META = {
-  new:      { label: '새 카드',     color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: '#22c55e' },
-  upgrade:  { label: '내용 보강',   color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: '#f59e0b' },
-  existing: { label: '이미 보유',   color: '#475569', bg: 'rgba(71,85,105,0.1)',  border: '#334155' },
+  new:      { label: '새 카드',     color: 'var(--theme-success, #22c55e)', bg: 'var(--theme-successSoft, rgba(34,197,94,0.14))',   border: 'var(--theme-success, #22c55e)' },
+  upgrade:  { label: '내용 보강',   color: 'var(--theme-warning, #f59e0b)', bg: 'var(--theme-warningSoft, rgba(245,158,11,0.14))', border: 'var(--theme-warning, #f59e0b)' },
+  existing: { label: '이미 보유',   color: 'var(--theme-textDim, #475569)', bg: 'var(--theme-panelSoft, rgba(15,23,42,0.6))',  border: 'var(--theme-borderStrong, #334155)' },
 }
 
 const REVIEW_FILTERS = [
@@ -1181,17 +1181,17 @@ function GroupRow({ group, onApply, topCategories, subjects, getParts }) {
                   draftPart !== (group.part === '미분류' ? '' : group.part)
 
   const safeParts = typeof getParts === 'function' ? (getParts(draftSubj, draftTop || '전체') || []) : []
-  const inputStyle = { width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '10px 12px', color: '#e2e8f0', fontSize: 13, outline: 'none', minWidth: 0 }
+  const inputStyle = { width: '100%', boxSizing: 'border-box', background: 'var(--theme-elevated, #0f172a)', border: '1px solid var(--theme-borderStrong, #334155)', borderRadius: 8, padding: '10px 12px', color: 'var(--theme-text, #e2e8f0)', fontSize: 13, outline: 'none', minWidth: 0 }
 
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'rgba(15,23,42,0.6)', padding: '12px 16px', borderRadius: 12, marginBottom: 8, border: '1px solid #1e293b' }}>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--theme-panelSoft, rgba(15,23,42,0.6))', padding: '12px 16px', borderRadius: 12, marginBottom: 8, border: '1px solid var(--theme-border, #1e293b)' }}>
       <div style={{ flex: 1, display: 'flex', gap: 8, flexWrap: 'nowrap' }}>
         <DataListInput id={`ge-top-${uid}`} value={draftTop} onChange={e => setDraftTop(e.target.value)} placeholder="대분류" style={inputStyle} options={topCategories} />
         <DataListInput id={`ge-sub-${uid}`} value={draftSubj} onChange={e => setDraftSubj(e.target.value)} placeholder="과목" style={inputStyle} options={subjects} />
         <DataListInput id={`ge-part-${uid}`} value={draftPart} onChange={e => setDraftPart(e.target.value)} placeholder="단원" style={inputStyle} options={safeParts} />
       </div>
-      <div style={{ width: 44, textAlign: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 700 }}>{group.count}장</div>
-      <button onClick={() => { if (changed) onApply(group.topCategory, group.subject, group.part, draftTop, draftSubj, draftPart) }} disabled={!changed} style={{ background: changed ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b', color: changed ? '#fff' : '#64748b', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, cursor: changed ? 'pointer' : 'not-allowed', fontWeight: 700, flexShrink: 0 }}>적용</button>
+      <div style={{ width: 44, textAlign: 'center', color: 'var(--theme-textMuted, #94a3b8)', fontSize: 12, fontWeight: 700 }}>{group.count}장</div>
+      <button onClick={() => { if (changed) onApply(group.topCategory, group.subject, group.part, draftTop, draftSubj, draftPart) }} disabled={!changed} style={{ background: changed ? 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))' : 'var(--theme-button, #1e293b)', color: changed ? 'var(--theme-onAccent, #fff)' : 'var(--theme-textDim, #64748b)', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, cursor: changed ? 'pointer' : 'not-allowed', fontWeight: 700, flexShrink: 0 }}>적용</button>
     </div>
   )
 }
@@ -1215,13 +1215,13 @@ function GroupEditorPanel({ extracted, onUpdateGroup, topCategories, subjects, g
   if (groups.length === 0) return null
 
   return (
-    <div style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 16, padding: '20px', marginBottom: 24, width: '100%', boxSizing: 'border-box' }}>
+    <div style={{ background: 'var(--theme-accentSoft, rgba(99,102,241,0.15))', border: '1px solid var(--theme-accentSoft, rgba(99,102,241,0.15))', borderRadius: 16, padding: '20px', marginBottom: 24, width: '100%', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setOpen(!open)}>
         <div>
-          <div style={{ color: '#e2e8f0', fontSize: 16, fontWeight: 800, marginBottom: 6 }}>📁 감지된 폴더 일괄 정리</div>
-          <div style={{ color: '#94a3b8', fontSize: 13, wordBreak: 'keep-all' }}>AI가 분류한 {groups.length}개의 폴더 그룹을 한 번에 수정할 수 있습니다.</div>
+          <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 16, fontWeight: 800, marginBottom: 6 }}>📁 감지된 폴더 일괄 정리</div>
+          <div style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 13, wordBreak: 'keep-all' }}>AI가 분류한 {groups.length}개의 폴더 그룹을 한 번에 수정할 수 있습니다.</div>
         </div>
-        <div style={{ color: '#818cf8', fontSize: 13, fontWeight: 700, background: 'rgba(99,102,241,0.1)', padding: '8px 14px', borderRadius: 10, whiteSpace: 'nowrap' }}>{open ? '접기 ▲' : '펼치기 ▼'}</div>
+        <div style={{ color: 'var(--theme-accent, #818cf8)', fontSize: 13, fontWeight: 700, background: 'var(--theme-accentSoft, rgba(99,102,241,0.15))', padding: '8px 14px', borderRadius: 10, whiteSpace: 'nowrap' }}>{open ? '접기 ▲' : '펼치기 ▼'}</div>
       </div>
       {open && (
         <div style={{ marginTop: 20 }}>
@@ -1243,7 +1243,7 @@ function SelectedBatchPanel({ selectedCount, onApply, topCategories, subjects, g
   const [draftPart, setDraftPart] = useState('')
   const safeParts = typeof getParts === 'function' ? (getParts(draftSubj, draftTop || '전체') || []) : []
   const canApply = selectedCount > 0 && (!!draftTop.trim() || !!draftSubj.trim() || !!draftPart.trim())
-  const inputStyle = { width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '10px 12px', color: '#e2e8f0', fontSize: 13, outline: 'none', minWidth: 0 }
+  const inputStyle = { width: '100%', boxSizing: 'border-box', background: 'var(--theme-elevated, #0f172a)', border: '1px solid var(--theme-borderStrong, #334155)', borderRadius: 8, padding: '10px 12px', color: 'var(--theme-text, #e2e8f0)', fontSize: 13, outline: 'none', minWidth: 0 }
 
   const apply = () => {
     if (!canApply) return
@@ -1254,11 +1254,11 @@ function SelectedBatchPanel({ selectedCount, onApply, topCategories, subjects, g
   }
 
   return (
-    <div style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.24)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+    <div style={{ background: 'var(--theme-infoSoft, rgba(14,165,233,0.14))', border: '1px solid var(--theme-infoSoft, rgba(14,165,233,0.14))', borderRadius: 16, padding: 16, marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 800, marginBottom: 5 }}>선택 카드 일괄 변경</div>
-          <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.55 }}>선택된 {selectedCount}장의 대분류/과목/단원을 한 번에 맞춥니다. 빈칸은 기존 값을 유지합니다.</div>
+          <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 15, fontWeight: 800, marginBottom: 5 }}>선택 카드 일괄 변경</div>
+          <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, lineHeight: 1.55 }}>선택된 {selectedCount}장의 대분류/과목/단원을 한 번에 맞춥니다. 빈칸은 기존 값을 유지합니다.</div>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1269,8 +1269,8 @@ function SelectedBatchPanel({ selectedCount, onApply, topCategories, subjects, g
           onClick={apply}
           disabled={!canApply}
           style={{
-            background: canApply ? 'linear-gradient(135deg,#0ea5e9,#6366f1)' : '#1e293b',
-            color: canApply ? '#fff' : '#475569',
+            background: canApply ? 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))' : 'var(--theme-button, #1e293b)',
+            color: canApply ? 'var(--theme-onAccent, #fff)' : 'var(--theme-textDim, #475569)',
             border: 'none',
             borderRadius: 8,
             padding: '10px 16px',
@@ -1294,16 +1294,16 @@ function SourceNumberAuditPanel({ audit, onRerunMissing }) {
 
   return (
     <div style={{
-      background: hasMissing ? 'rgba(245,158,11,0.08)' : 'rgba(34,197,94,0.07)',
-      border: `1px solid ${hasMissing ? 'rgba(245,158,11,0.38)' : 'rgba(34,197,94,0.28)'}`,
+      background: hasMissing ? 'var(--theme-warningSoft, rgba(245,158,11,0.14))' : 'var(--theme-successSoft, rgba(34,197,94,0.14))',
+      border: `1px solid ${hasMissing ? 'var(--theme-warningSoft, rgba(245,158,11,0.14))' : 'var(--theme-successSoft, rgba(34,197,94,0.14))'}`,
       borderRadius: 16,
       padding: 16,
       marginBottom: 16,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div>
-          <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 800 }}>원문 번호 누락 점검표</div>
-          <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.55, marginTop: 4 }}>
+          <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 15, fontWeight: 800 }}>원문 번호 누락 점검표</div>
+          <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, lineHeight: 1.55, marginTop: 4 }}>
             {hasChecklist
               ? `원문 번호 후보 ${audit.total}개 중 ${audit.covered}개가 카드 sourceNumber와 연결되었습니다.`
               : '원문 텍스트에서 번호 항목을 찾지 못했습니다. 번호가 없는 문서이거나 PDF 텍스트 구조가 흐트러진 경우일 수 있습니다.'}
@@ -1313,9 +1313,9 @@ function SourceNumberAuditPanel({ audit, onRerunMissing }) {
         {hasChecklist && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <div style={{
-              color: hasMissing ? '#fbbf24' : '#86efac',
-              background: hasMissing ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.12)',
-              border: `1px solid ${hasMissing ? 'rgba(245,158,11,0.35)' : 'rgba(34,197,94,0.3)'}`,
+              color: hasMissing ? 'var(--theme-warningText, #fbbf24)' : 'var(--theme-successText, #86efac)',
+              background: hasMissing ? 'var(--theme-warningSoft, rgba(245,158,11,0.14))' : 'var(--theme-successSoft, rgba(34,197,94,0.14))',
+              border: `1px solid ${hasMissing ? 'var(--theme-warningSoft, rgba(245,158,11,0.14))' : 'var(--theme-successSoft, rgba(34,197,94,0.14))'}`,
               borderRadius: 10,
               padding: '8px 12px',
               fontSize: 12,
@@ -1329,8 +1329,8 @@ function SourceNumberAuditPanel({ audit, onRerunMissing }) {
                 onClick={onRerunMissing}
                 disabled={!onRerunMissing}
                 style={{
-                  background: onRerunMissing ? 'linear-gradient(135deg,#f59e0b,#d97706)' : '#1e293b',
-                  color: onRerunMissing ? '#111827' : '#475569',
+                  background: onRerunMissing ? 'linear-gradient(135deg,var(--theme-warning, #f59e0b),var(--theme-warningText, #d97706))' : 'var(--theme-button, #1e293b)',
+                  color: onRerunMissing ? 'var(--theme-bg, #111827)' : 'var(--theme-textDim, #475569)',
                   border: 'none',
                   borderRadius: 10,
                   padding: '8px 12px',
@@ -1349,18 +1349,18 @@ function SourceNumberAuditPanel({ audit, onRerunMissing }) {
 
       {hasMissing && (
         <div style={{ marginTop: 13 }}>
-          <div style={{ color: '#fbbf24', fontSize: 12, fontWeight: 800, marginBottom: 8 }}>
+          <div style={{ color: 'var(--theme-warningText, #fbbf24)', fontSize: 12, fontWeight: 800, marginBottom: 8 }}>
             아래 번호는 추출 카드의 원문 번호에서 아직 발견되지 않았습니다.
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 170, overflowY: 'auto' }}>
             {visibleMissing.map((item) => (
-              <div key={item.norm} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: 'rgba(10,15,30,0.42)', border: '1px solid rgba(245,158,11,0.18)', borderRadius: 10, padding: '8px 10px' }}>
-                <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 900, minWidth: 36 }}>{item.label}</span>
-                <span style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.45, wordBreak: 'keep-all' }}>{item.context}</span>
+              <div key={item.norm} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: 'var(--theme-input, rgba(10,15,30,0.42))', border: '1px solid var(--theme-warningSoft, rgba(245,158,11,0.14))', borderRadius: 10, padding: '8px 10px' }}>
+                <span style={{ color: 'var(--theme-warningText, #fbbf24)', fontSize: 12, fontWeight: 900, minWidth: 36 }}>{item.label}</span>
+                <span style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 12, lineHeight: 1.45, wordBreak: 'keep-all' }}>{item.context}</span>
               </div>
             ))}
             {audit.missing.length > visibleMissing.length && (
-              <div style={{ color: '#64748b', fontSize: 12, padding: '4px 2px' }}>
+              <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, padding: '4px 2px' }}>
                 외 {audit.missing.length - visibleMissing.length}개가 더 있습니다. 문서를 단원별로 더 작게 나누거나 더 촘촘히 재추출해 주세요.
               </div>
             )}
@@ -1387,11 +1387,11 @@ function CardItem({ card, type, checked, onToggle, onChange, onMergeExisting, to
 
   const commitEdit = () => { onChange(draft); setEditing(false) }
 
-  const inputStyle = { width: '100%', boxSizing: 'border-box', minWidth: 0, background: '#0a0f1e', border: '1px solid #334155', borderRadius: 6, padding: '6px 9px', color: '#e2e8f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', marginBottom: 5, resize: 'vertical' }
+  const inputStyle = { width: '100%', boxSizing: 'border-box', minWidth: 0, background: 'var(--theme-input, #0a0f1e)', border: '1px solid var(--theme-borderStrong, #334155)', borderRadius: 6, padding: '6px 9px', color: 'var(--theme-text, #e2e8f0)', fontSize: 13, fontFamily: 'inherit', outline: 'none', marginBottom: 5, resize: 'vertical' }
 
   if (editing) {
     return (
-      <div style={{ background: checked ? 'rgba(99,102,241,0.1)' : 'rgba(15,23,42,0.7)', border: `1px solid ${checked ? '#6366f1' : '#1e293b'}`, borderRadius: 12, padding: '11px 13px', display: 'flex', flexDirection: 'column', width: '100%', boxSizing: 'border-box', cursor: 'default' }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ background: checked ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'var(--theme-panelSoft, rgba(15,23,42,0.7))', border: `1px solid ${checked ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-border, #1e293b)'}`, borderRadius: 12, padding: '11px 13px', display: 'flex', flexDirection: 'column', width: '100%', boxSizing: 'border-box', cursor: 'default' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', gap: 6, width: '100%' }}>
           <DataListInput id={`ext-top-${uid}`} value={getTopCategory(draft)} onChange={(e) => setDraft({ ...draft, topCategory: e.target.value })} placeholder="대분류" style={inputStyle} options={safeTopCategories} />
           <DataListInput id={`ext-sub-${uid}`} value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="과목" style={inputStyle} options={safeSubjects} />
@@ -1403,71 +1403,71 @@ function CardItem({ card, type, checked, onToggle, onChange, onMergeExisting, to
           <textarea style={{ ...inputStyle, minHeight: 60 }} value={draft.answer || ''} onChange={(e) => setDraft({ ...draft, answer: e.target.value })} placeholder={answerLabel(card)} />
         ) : (
           <>
-            <input style={{ ...inputStyle, color: '#818cf8', fontWeight: 700 }} value={draft.mnemonic || ''} onChange={(e) => setDraft({ ...draft, mnemonic: e.target.value })} placeholder="두문자" />
+            <input style={{ ...inputStyle, color: 'var(--theme-accent, #818cf8)', fontWeight: 700 }} value={draft.mnemonic || ''} onChange={(e) => setDraft({ ...draft, mnemonic: e.target.value })} placeholder="두문자" />
             <textarea style={{ ...inputStyle, minHeight: 60, fontSize: 12 }} value={draft.detail || ''} onChange={(e) => setDraft({ ...draft, detail: e.target.value })} placeholder="설명" />
           </>
         )}
         <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-          <button onClick={commitEdit} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600, flex: 1 }}>저장</button>
-          <button onClick={() => { setDraft(card); setEditing(false) }} style={{ background: '#1e293b', color: '#94a3b8', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 12, cursor: 'pointer', flex: 1 }}>취소</button>
+          <button onClick={commitEdit} style={{ background: 'var(--theme-accentStrong, #6366f1)', color: 'var(--theme-onAccent, #fff)', border: 'none', borderRadius: 7, padding: '6px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600, flex: 1 }}>저장</button>
+          <button onClick={() => { setDraft(card); setEditing(false) }} style={{ background: 'var(--theme-button, #1e293b)', color: 'var(--theme-textMuted, #94a3b8)', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 12, cursor: 'pointer', flex: 1 }}>취소</button>
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{ background: checked ? 'rgba(99,102,241,0.1)' : 'rgba(15,23,42,0.7)', border: `1px solid ${checked ? '#6366f1' : '#1e293b'}`, borderRadius: 12, padding: '11px 13px', display: 'flex', gap: 10, alignItems: 'flex-start', width: '100%', boxSizing: 'border-box' }}>
-      <div onClick={onToggle} style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginTop: 3, cursor: 'pointer', border: `2px solid ${checked ? '#6366f1' : '#334155'}`, background: checked ? '#6366f1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {checked && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>}
+    <div style={{ background: checked ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'var(--theme-panelSoft, rgba(15,23,42,0.7))', border: `1px solid ${checked ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-border, #1e293b)'}`, borderRadius: 12, padding: '11px 13px', display: 'flex', gap: 10, alignItems: 'flex-start', width: '100%', boxSizing: 'border-box' }}>
+      <div onClick={onToggle} style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginTop: 3, cursor: 'pointer', border: `2px solid ${checked ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-borderStrong, #334155)'}`, background: checked ? 'var(--theme-accentStrong, #6366f1)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {checked && <span style={{ color: 'var(--theme-onAccent, #fff)', fontSize: 11, fontWeight: 700 }}>✓</span>}
       </div>
       <div style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
         <div style={{ display: 'flex', gap: 5, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 10, borderRadius: 4, padding: '2px 7px', fontWeight: 600, background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>{meta.label}</span>
-          <span style={{ background: 'rgba(14,165,233,0.12)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.28)', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{getTopCategory(card)}</span>
-          <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.subject || '미분류'}</span>
-          <span style={{ background: '#1e293b', color: '#64748b', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.part || '미분류'}</span>
-          {card.sourceNumber && <span style={{ background: 'rgba(14,165,233,0.12)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.28)', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>원문 {card.sourceNumber}</span>}
-          <span style={{ background: 'rgba(14,165,233,0.12)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.28)', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{cardKindLabel(card)}</span>
+          <span style={{ background: 'var(--theme-infoSoft, rgba(14,165,233,0.14))', color: 'var(--theme-infoText, #7dd3fc)', border: '1px solid var(--theme-infoSoft, rgba(14,165,233,0.14))', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{getTopCategory(card)}</span>
+          <span style={{ background: 'var(--theme-button, #1e293b)', color: 'var(--theme-textMuted, #94a3b8)', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.subject || '미분류'}</span>
+          <span style={{ background: 'var(--theme-button, #1e293b)', color: 'var(--theme-textDim, #64748b)', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{card.part || '미분류'}</span>
+          {card.sourceNumber && <span style={{ background: 'var(--theme-infoSoft, rgba(14,165,233,0.14))', color: 'var(--theme-infoText, #7dd3fc)', border: '1px solid var(--theme-infoSoft, rgba(14,165,233,0.14))', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>원문 {card.sourceNumber}</span>}
+          <span style={{ background: 'var(--theme-infoSoft, rgba(14,165,233,0.14))', color: 'var(--theme-infoText, #7dd3fc)', border: '1px solid var(--theme-infoSoft, rgba(14,165,233,0.14))', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{cardKindLabel(card)}</span>
           {issues.slice(0, 3).map((issue) => (
-            <span key={issue} style={{ background: 'rgba(245,158,11,0.12)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.35)', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{issue}</span>
+            <span key={issue} style={{ background: 'var(--theme-warningSoft, rgba(245,158,11,0.14))', color: 'var(--theme-warningText, #fbbf24)', border: '1px solid var(--theme-warningSoft, rgba(245,158,11,0.14))', fontSize: 10, borderRadius: 4, padding: '2px 7px', wordBreak: 'keep-all' }}>{issue}</span>
           ))}
         </div>
         <div onClick={onToggle} style={{ cursor: 'pointer', wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
-          <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
+          <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{card.question}</div>
           {isAnswer ? (
-            <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{card.answer}</div>
+            <div style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 12, lineHeight: 1.5 }}>{card.answer}</div>
           ) : (
             <>
-              <div style={{ color: '#818cf8', fontSize: 14, fontWeight: 700, letterSpacing: 1, marginBottom: type === 'upgrade' ? 4 : 0, overflowWrap: 'anywhere' }}>{card.mnemonic}</div>
-              {type === 'upgrade' && <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.5 }}>{card.detail}</div>}
+              <div style={{ color: 'var(--theme-accent, #818cf8)', fontSize: 14, fontWeight: 700, letterSpacing: 1, marginBottom: type === 'upgrade' ? 4 : 0, overflowWrap: 'anywhere' }}>{card.mnemonic}</div>
+              {type === 'upgrade' && <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 11, lineHeight: 1.5 }}>{card.detail}</div>}
             </>
           )}
         </div>
         {match && (type === 'upgrade' || type === 'existing') && (
-          <div style={{ marginTop: 10, background: 'rgba(2,6,23,0.45)', border: '1px solid #1e293b', borderRadius: 10, padding: 10 }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ color: '#94a3b8', fontSize: 11, fontWeight: 800, marginBottom: 8 }}>기존 카드 비교</div>
+          <div style={{ marginTop: 10, background: 'var(--theme-input, rgba(2,6,23,0.45))', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 10, padding: 10 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 11, fontWeight: 800, marginBottom: 8 }}>기존 카드 비교</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
               <div>
-                <div style={{ color: '#64748b', fontSize: 10, marginBottom: 4 }}>기존</div>
-                <div style={{ color: '#cbd5e1', fontSize: 11, lineHeight: 1.45 }}>{isAnswerCard(match) ? (match.answer || '-') : (match.detail || match.mnemonic || '-')}</div>
+                <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 10, marginBottom: 4 }}>기존</div>
+                <div style={{ color: 'var(--theme-textMuted, #cbd5e1)', fontSize: 11, lineHeight: 1.45 }}>{isAnswerCard(match) ? (match.answer || '-') : (match.detail || match.mnemonic || '-')}</div>
               </div>
               <div>
-                <div style={{ color: '#64748b', fontSize: 10, marginBottom: 4 }}>추출</div>
-                <div style={{ color: '#e2e8f0', fontSize: 11, lineHeight: 1.45 }}>{isAnswer ? (card.answer || '-') : (card.detail || card.mnemonic || '-')}</div>
+                <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 10, marginBottom: 4 }}>추출</div>
+                <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 11, lineHeight: 1.45 }}>{isAnswer ? (card.answer || '-') : (card.detail || card.mnemonic || '-')}</div>
               </div>
             </div>
             {match.id ? (
               <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => onMergeExisting?.('append')} style={{ background: 'rgba(245,158,11,0.14)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 7, padding: '6px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 800 }}>기존에 합치기</button>
-                <button onClick={() => onMergeExisting?.('replace')} style={{ background: 'rgba(99,102,241,0.14)', color: '#c4b5fd', border: '1px solid rgba(99,102,241,0.35)', borderRadius: 7, padding: '6px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 800 }}>새 내용으로 교체</button>
+                <button onClick={() => onMergeExisting?.('append')} style={{ background: 'var(--theme-warningSoft, rgba(245,158,11,0.14))', color: 'var(--theme-warningText, #fbbf24)', border: '1px solid var(--theme-warningSoft, rgba(245,158,11,0.14))', borderRadius: 7, padding: '6px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 800 }}>기존에 합치기</button>
+                <button onClick={() => onMergeExisting?.('replace')} style={{ background: 'var(--theme-accentSoft, rgba(99,102,241,0.15))', color: 'var(--theme-accentText, #c4b5fd)', border: '1px solid var(--theme-accentSoft, rgba(99,102,241,0.15))', borderRadius: 7, padding: '6px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 800 }}>새 내용으로 교체</button>
               </div>
             ) : (
-              <div style={{ color: '#64748b', fontSize: 11, marginTop: 8 }}>기본 내장 카드와 겹쳐 직접 병합할 수 없습니다.</div>
+              <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 11, marginTop: 8 }}>기본 내장 카드와 겹쳐 직접 병합할 수 없습니다.</div>
             )}
           </div>
         )}
       </div>
-      <button onClick={(e) => { e.stopPropagation(); setDraft(card); setEditing(true) }} style={{ background: 'none', border: 'none', color: '#334155', cursor: 'pointer', fontSize: 14, padding: '2px 4px', flexShrink: 0 }} title="편집">✎</button>
+      <button onClick={(e) => { e.stopPropagation(); setDraft(card); setEditing(true) }} style={{ background: 'none', border: 'none', color: 'var(--theme-borderStrong, #334155)', cursor: 'pointer', fontSize: 14, padding: '2px 4px', flexShrink: 0 }} title="편집">✎</button>
     </div>
   )
 }
@@ -1883,23 +1883,23 @@ export default function ExtractPage({ cards, onImport }) {
     setDroppedCount(0)
   }
 
-  const inputStyle = { flex: 1, background: '#0f172a', border: '1px solid #334155', minWidth: 0, borderRadius: 10, padding: '10px 14px', color: '#e2e8f0', fontSize: 14, fontFamily: 'monospace', outline: 'none' }
-  const btnStyle = { background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', flexShrink: 0, border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 14, cursor: 'pointer', fontWeight: 700 }
+  const inputStyle = { flex: 1, background: 'var(--theme-elevated, #0f172a)', border: '1px solid var(--theme-borderStrong, #334155)', minWidth: 0, borderRadius: 10, padding: '10px 14px', color: 'var(--theme-text, #e2e8f0)', fontSize: 14, fontFamily: 'monospace', outline: 'none' }
+  const btnStyle = { background: 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))', color: 'var(--theme-onAccent, #fff)', flexShrink: 0, border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 14, cursor: 'pointer', fontWeight: 700 }
 
   return (
     <div style={{ width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
-      <h2 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>AI 카드 추출</h2>
-      <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24, wordBreak: 'keep-all' }}>
+      <h2 style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>AI 카드 추출</h2>
+      <p style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 14, marginBottom: 24, wordBreak: 'keep-all' }}>
         Gemini 무료 API 키로 PDF와 텍스트를 작게 나눠 분석하고, 원문 번호와 순서대로 시험 암기 노트를 빌드합니다.
-        <span style={{ display: 'block', color: '#475569', fontSize: 12, marginTop: 6 }}>{EXTRACTOR_VERSION_LABEL}</span>
+        <span style={{ display: 'block', color: 'var(--theme-textDim, #475569)', fontSize: 12, marginTop: 6 }}>{EXTRACTOR_VERSION_LABEL}</span>
       </p>
 
       {/* 🔑 API 키 패널 */}
-      <div style={{ marginBottom: 20, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14, background: 'rgba(15,23,42,0.4)', padding: 16, borderRadius: 14, border: '1px solid #1e293b' }}>
+      <div style={{ marginBottom: 20, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14, background: 'var(--theme-panelSoft, rgba(15,23,42,0.6))', padding: 16, borderRadius: 14, border: '1px solid var(--theme-border, #1e293b)' }}>
         <div>
-          <span style={{ color: '#94a3b8', fontSize: 13, marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-            <span><b>Gemini</b> API 키 <span style={{ color: '#64748b', fontSize: 11 }}>(필수 · 무료 티어 가능)</span></span>
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: '#818cf8', fontSize: 12 }}>발급 링크</a>
+          <span style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 13, marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
+            <span><b>Gemini</b> API 키 <span style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 11 }}>(필수 · 무료 티어 가능)</span></span>
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--theme-accent, #818cf8)', fontSize: 12 }}>발급 링크</a>
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <input type="password" placeholder="AIza..." defaultValue={geminiKey} onBlur={(e) => saveGeminiKey(e.target.value.trim())} style={inputStyle} />
@@ -1909,7 +1909,7 @@ export default function ExtractPage({ cards, onImport }) {
       </div>
 
       {!geminiKey && (
-        <div style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 12, padding: 16, color: '#64748b', fontSize: 13, textAlign: 'center', marginBottom: 20 }}>
+        <div style={{ background: 'var(--theme-accentSoft, rgba(99,102,241,0.15))', border: '1px solid var(--theme-accentSoft, rgba(99,102,241,0.15))', borderRadius: 12, padding: 16, color: 'var(--theme-textDim, #64748b)', fontSize: 13, textAlign: 'center', marginBottom: 20 }}>
           무료 Gemini API 키를 등록해야 플래시카드 자동 추출 시스템을 가동할 수 있습니다.
         </div>
       )}
@@ -1917,7 +1917,7 @@ export default function ExtractPage({ cards, onImport }) {
       {geminiKey && status === 'idle' && (
         <>
           <div style={{ marginBottom: 16 }}>
-            <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 8 }}>추출 방식</div>
+            <div style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 13, marginBottom: 8 }}>추출 방식</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {[
                 ['mnemonic', '🔤 두문자 카드', '두문자(약어)를 매핑하여 추출'],
@@ -1927,21 +1927,21 @@ export default function ExtractPage({ cards, onImport }) {
               ].map(([type, label, desc]) => (
                 <button key={type} onClick={() => setExtractType(type)} style={{
                   flex: 1, textAlign: 'left', minWidth: 0,
-                  background: extractType === type ? 'rgba(99,102,241,0.12)' : 'rgba(15,23,42,0.6)',
-                  border: `1.5px solid ${extractType === type ? '#6366f1' : '#1e293b'}`,
+                  background: extractType === type ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'var(--theme-panelSoft, rgba(15,23,42,0.6))',
+                  border: `1.5px solid ${extractType === type ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-border, #1e293b)'}`,
                   borderRadius: 12, padding: '11px 13px', cursor: 'pointer', transition: 'all 0.15s',
                 }}>
-                  <div style={{ color: extractType === type ? '#e2e8f0' : '#94a3b8', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>{label}</div>
-                  <div style={{ color: '#475569', fontSize: 11, marginTop: 2, wordBreak: 'keep-all' }}>{desc}</div>
+                  <div style={{ color: extractType === type ? 'var(--theme-text, #e2e8f0)' : 'var(--theme-textMuted, #94a3b8)', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>{label}</div>
+                  <div style={{ color: 'var(--theme-textDim, #475569)', fontSize: 11, marginTop: 2, wordBreak: 'keep-all' }}>{desc}</div>
                 </button>
               ))}
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 0, marginBottom: 16, background: '#0f172a', borderRadius: 10, padding: 3, width: 'fit-content' }}>
+          <div style={{ display: 'flex', gap: 0, marginBottom: 16, background: 'var(--theme-elevated, #0f172a)', borderRadius: 10, padding: 3, width: 'fit-content' }}>
             {[['file', '📄 파일 업로드'], ['text', '✎ 텍스트 붙여넣기']].map(([mode, label]) => (
               <button key={mode} onClick={() => setInputMode(mode)} style={{
-                background: inputMode === mode ? '#1e293b' : 'none', color: inputMode === mode ? '#e2e8f0' : '#475569',
+                background: inputMode === mode ? 'var(--theme-button, #1e293b)' : 'none', color: inputMode === mode ? 'var(--theme-text, #e2e8f0)' : 'var(--theme-textDim, #475569)',
                 border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, cursor: 'pointer', fontWeight: inputMode === mode ? 600 : 400, transition: 'all 0.15s',
               }}>{label}</button>
             ))}
@@ -1950,16 +1950,16 @@ export default function ExtractPage({ cards, onImport }) {
           {inputMode === 'file' ? (
             <div
               style={{
-                border: `2px dashed ${dragging ? '#6366f1' : '#334155'}`, borderRadius: 16, padding: '40px 24px', textAlign: 'center', cursor: 'pointer',
-                background: dragging ? 'rgba(99,102,241,0.07)' : 'rgba(15,23,42,0.6)', transition: 'all 0.2s', width: '100%', boxSizing: 'border-box'
+                border: `2px dashed ${dragging ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-borderStrong, #334155)'}`, borderRadius: 16, padding: '40px 24px', textAlign: 'center', cursor: 'pointer',
+                background: dragging ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'var(--theme-panelSoft, rgba(15,23,42,0.6))', transition: 'all 0.2s', width: '100%', boxSizing: 'border-box'
               }}
               onClick={() => inputRef.current?.click()} onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
               onDragLeave={() => setDragging(false)} onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
             >
               <input ref={inputRef} type="file" accept=".pdf,.txt" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) handleFile(f) }} />
               <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
-              <div style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.6, wordBreak: 'keep-all' }}>PDF, TXT 파일을 드래그하거나<br /><span style={{ color: '#818cf8', fontWeight: 600 }}>클릭하여 탐색기 열기</span></div>
-              <div style={{ color: '#475569', fontSize: 11, marginTop: 10, lineHeight: 1.6, wordBreak: 'keep-all' }}>TXT/PDF 텍스트 우선 분석 · PDF 최대 {MAX_FILE_MB}MB · Word는 PDF로 변환 후 업로드</div>
+              <div style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 14, lineHeight: 1.6, wordBreak: 'keep-all' }}>PDF, TXT 파일을 드래그하거나<br /><span style={{ color: 'var(--theme-accent, #818cf8)', fontWeight: 600 }}>클릭하여 탐색기 열기</span></div>
+              <div style={{ color: 'var(--theme-textDim, #475569)', fontSize: 11, marginTop: 10, lineHeight: 1.6, wordBreak: 'keep-all' }}>TXT/PDF 텍스트 우선 분석 · PDF 최대 {MAX_FILE_MB}MB · Word는 PDF로 변환 후 업로드</div>
             </div>
           ) : (
             <div style={{ width: '100%', boxSizing: 'border-box' }}>
@@ -1967,15 +1967,15 @@ export default function ExtractPage({ cards, onImport }) {
                 value={textInput} onChange={(e) => setTextInput(e.target.value)}
                 placeholder={'강의 필기, 요약문서 등을 붙여넣으세요.\n\n예시:\n이행지체 요건: 이.가.게.귀.위\n[이행기 도래 / 이행 가능 / 이행 게을리함 / 귀책사유 / 위법성]'}
                 style={{
-                  width: '100%', boxSizing: 'border-box', minWidth: 0, background: 'rgba(15,23,42,0.8)', border: '1px solid #334155',
-                  borderRadius: 14, padding: '16px', color: '#e2e8f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', resize: 'vertical', minHeight: 200, lineHeight: 1.7,
+                  width: '100%', boxSizing: 'border-box', minWidth: 0, background: 'var(--theme-panelSoft, rgba(15,23,42,0.6))', border: '1px solid var(--theme-borderStrong, #334155)',
+                  borderRadius: 14, padding: '16px', color: 'var(--theme-text, #e2e8f0)', fontSize: 13, fontFamily: 'inherit', outline: 'none', resize: 'vertical', minHeight: 200, lineHeight: 1.7,
                 }}
               />
               <button
                 onClick={handleTextSubmit} disabled={!textInput.trim()}
                 style={{
-                  marginTop: 10, width: '100%', background: textInput.trim() ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#1e293b',
-                  color: textInput.trim() ? '#fff' : '#475569', border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, cursor: textInput.trim() ? 'pointer' : 'not-allowed', fontWeight: 700,
+                  marginTop: 10, width: '100%', background: textInput.trim() ? 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))' : 'var(--theme-button, #1e293b)',
+                  color: textInput.trim() ? 'var(--theme-onAccent, #fff)' : 'var(--theme-textDim, #475569)', border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, cursor: textInput.trim() ? 'pointer' : 'not-allowed', fontWeight: 700,
                 }}
               >분석 시작</button>
             </div>
@@ -1984,25 +1984,25 @@ export default function ExtractPage({ cards, onImport }) {
       )}
 
       {status === 'loading' && (
-        <div style={{ background: 'rgba(15,23,42,0.8)', border: '1px solid #1e293b', borderRadius: 16, padding: '48px 32px', textAlign: 'center', width: '100%', boxSizing: 'border-box' }}>
-          <div style={{ fontSize: 50, fontWeight: 800, color: '#6366f1', marginBottom: 8, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>{Math.round(loadingPct)}%</div>
-          <div style={{ background: '#0f172a', borderRadius: 8, height: 6, margin: '0 auto 24px', width: '100%', maxWidth: 300, overflow: 'hidden' }}>
-            <div style={{ background: 'linear-gradient(90deg,#6366f1,#8b5cf6)', height: '100%', borderRadius: 8, width: `${loadingPct}%`, transition: 'width 0.35s ease' }} />
+        <div style={{ background: 'var(--theme-panelSoft, rgba(15,23,42,0.6))', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 16, padding: '48px 32px', textAlign: 'center', width: '100%', boxSizing: 'border-box' }}>
+          <div style={{ fontSize: 50, fontWeight: 800, color: 'var(--theme-accentStrong, #6366f1)', marginBottom: 8, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>{Math.round(loadingPct)}%</div>
+          <div style={{ background: 'var(--theme-elevated, #0f172a)', borderRadius: 8, height: 6, margin: '0 auto 24px', width: '100%', maxWidth: 300, overflow: 'hidden' }}>
+            <div style={{ background: 'linear-gradient(90deg,var(--theme-accentStrong, #6366f1),var(--theme-accent, #818cf8))', height: '100%', borderRadius: 8, width: `${loadingPct}%`, transition: 'width 0.35s ease' }} />
           </div>
-          <div style={{ color: '#94a3b8', fontSize: 14 }}>{progress}</div>
-          {file && <div style={{ color: '#475569', fontSize: 12, marginTop: 6, wordBreak: 'break-all' }}>{file.name}</div>}
+          <div style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 14 }}>{progress}</div>
+          {file && <div style={{ color: 'var(--theme-textDim, #475569)', fontSize: 12, marginTop: 6, wordBreak: 'break-all' }}>{file.name}</div>}
         </div>
       )}
 
       {status === 'error' && (
-        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 16, padding: '28px', textAlign: 'center', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ background: 'var(--theme-dangerSoft, rgba(239,68,68,0.14))', border: '1px solid var(--theme-dangerSoft, rgba(239,68,68,0.14))', borderRadius: 16, padding: '28px', textAlign: 'center', width: '100%', boxSizing: 'border-box' }}>
           <div style={{ fontSize: 28, marginBottom: 10 }}>⚠️</div>
-          <div style={{ color: '#fca5a5', fontSize: 14, marginBottom: 16, wordBreak: 'keep-all', whiteSpace: 'pre-wrap' }}>{errorMsg}</div>
+          <div style={{ color: 'var(--theme-dangerText, #fca5a5)', fontSize: 14, marginBottom: 16, wordBreak: 'keep-all', whiteSpace: 'pre-wrap' }}>{errorMsg}</div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
             {extracted.length > 0 && (
-              <button onClick={() => setStatus('done')} style={{ background: '#1e293b', color: '#94a3b8', border: 'none', borderRadius: 10, padding: '9px 20px', fontSize: 13, cursor: 'pointer' }}>기존 결과 보기</button>
+              <button onClick={() => setStatus('done')} style={{ background: 'var(--theme-button, #1e293b)', color: 'var(--theme-textMuted, #94a3b8)', border: 'none', borderRadius: 10, padding: '9px 20px', fontSize: 13, cursor: 'pointer' }}>기존 결과 보기</button>
             )}
-            <button onClick={reset} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 24px', fontSize: 13, cursor: 'pointer' }}>다시 시도</button>
+            <button onClick={reset} style={{ background: 'var(--theme-accentStrong, #6366f1)', color: 'var(--theme-onAccent, #fff)', border: 'none', borderRadius: 10, padding: '9px 24px', fontSize: 13, cursor: 'pointer' }}>다시 시도</button>
           </div>
         </div>
       )}
@@ -2010,13 +2010,13 @@ export default function ExtractPage({ cards, onImport }) {
       {status === 'done' && (
         <div style={{ width: '100%' }}>
           {droppedCount > 0 && (
-            <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, color: '#86efac', fontSize: 13, lineHeight: 1.55 }}>
+            <div style={{ background: 'var(--theme-successSoft, rgba(34,197,94,0.14))', border: '1px solid var(--theme-successSoft, rgba(34,197,94,0.14))', borderRadius: 12, padding: '12px 16px', marginBottom: 12, color: 'var(--theme-successText, #86efac)', fontSize: 13, lineHeight: 1.55 }}>
               🧹 부실 카드 <b>{droppedCount}장</b>을 자동으로 제외했습니다 (두문자/설명 비어있음, 대제목 오인, 구분자 없음 등).
             </div>
           )}
 
           {truncated && (
-            <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: 12, padding: '14px 16px', marginBottom: 16, color: '#fbbf24', fontSize: 13, lineHeight: 1.6 }}>
+            <div style={{ background: 'var(--theme-warningSoft, rgba(245,158,11,0.14))', border: '1px solid var(--theme-warningSoft, rgba(245,158,11,0.14))', borderRadius: 12, padding: '14px 16px', marginBottom: 16, color: 'var(--theme-warningText, #fbbf24)', fontSize: 13, lineHeight: 1.6 }}>
               ⚠️ <b>일부 결과가 불안정할 수 있습니다:</b> 응답이 중간에 잘렸거나 일부 텍스트 조각 분석에 실패했을 수 있으니, 누락이 보이면 <b>문서를 조금 더 작게 분할하여</b> 실행해 주세요.
             </div>
           )}
@@ -2025,34 +2025,34 @@ export default function ExtractPage({ cards, onImport }) {
           <GroupEditorPanel extracted={extracted} onUpdateGroup={updateGroup} topCategories={allTopCategories} subjects={allSubjects} getParts={getPartsForSubject} />
           <SelectedBatchPanel selectedCount={selected.size} onApply={applyToSelected} topCategories={allTopCategories} subjects={allSubjects} getParts={getPartsForSubject} />
 
-          <div style={{ background: 'rgba(15,23,42,0.72)', border: '1px solid #1e293b', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+          <div style={{ background: 'var(--theme-panelSoft, rgba(15,23,42,0.6))', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
               <div>
-                <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 800 }}>검수 대시보드</div>
-                <div style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>미분류·빈칸·기존 카드 보강 후보를 먼저 확인하세요.</div>
+                <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 15, fontWeight: 800 }}>검수 대시보드</div>
+                <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, marginTop: 3 }}>미분류·빈칸·기존 카드 보강 후보를 먼저 확인하세요.</div>
               </div>
               <button onClick={rerunDenseExtraction} disabled={!lastSource || extracted.length === 0} style={{
-                background: (!lastSource || extracted.length === 0) ? '#1e293b' : 'linear-gradient(135deg,#f59e0b,#d97706)',
-                color: (!lastSource || extracted.length === 0) ? '#475569' : '#111827',
+                background: (!lastSource || extracted.length === 0) ? 'var(--theme-button, #1e293b)' : 'linear-gradient(135deg,var(--theme-warning, #f59e0b),var(--theme-warningText, #d97706))',
+                color: (!lastSource || extracted.length === 0) ? 'var(--theme-textDim, #475569)' : 'var(--theme-bg, #111827)',
                 border: 'none', borderRadius: 10, padding: '9px 14px', fontSize: 12,
                 cursor: (!lastSource || extracted.length === 0) ? 'not-allowed' : 'pointer', fontWeight: 800, whiteSpace: 'nowrap',
               }}>더 촘촘히 재추출</button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: 8 }}>
               {[
-                ['선택', reviewCounts.selected, '#818cf8'],
-                ['검수 필요', reviewCounts.needsReview, '#f59e0b'],
-                ['미분류', reviewCounts.unclassified, '#fbbf24'],
-                ['빈칸', reviewCounts.missingCore, '#ef4444'],
-                ...(sourceAudit?.total > 0 ? [['번호 누락', sourceAudit.missing.length, '#fbbf24']] : []),
-                ['보강', counts.upgrade, '#f59e0b'],
-                ['이미 보유', counts.existing, '#64748b'],
-                ['판례', reviewCounts.case, '#38bdf8'],
-                ['조문', reviewCounts.statute, '#22c55e'],
+                ['선택', reviewCounts.selected, 'var(--theme-accent, #818cf8)'],
+                ['검수 필요', reviewCounts.needsReview, 'var(--theme-warning, #f59e0b)'],
+                ['미분류', reviewCounts.unclassified, 'var(--theme-warningText, #fbbf24)'],
+                ['빈칸', reviewCounts.missingCore, 'var(--theme-danger, #ef4444)'],
+                ...(sourceAudit?.total > 0 ? [['번호 누락', sourceAudit.missing.length, 'var(--theme-warningText, #fbbf24)']] : []),
+                ['보강', counts.upgrade, 'var(--theme-warning, #f59e0b)'],
+                ['이미 보유', counts.existing, 'var(--theme-textDim, #64748b)'],
+                ['판례', reviewCounts.case, 'var(--theme-info, #38bdf8)'],
+                ['조문', reviewCounts.statute, 'var(--theme-success, #22c55e)'],
               ].map(([label, count, color]) => (
-                <div key={label} style={{ background: 'rgba(10,15,30,0.55)', border: '1px solid #1e293b', borderRadius: 10, padding: '10px 12px' }}>
+                <div key={label} style={{ background: 'var(--theme-panelSoft, rgba(10,15,30,0.55))', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ color, fontSize: 19, fontWeight: 900, lineHeight: 1 }}>{count}</div>
-                  <div style={{ color: '#64748b', fontSize: 11, marginTop: 5 }}>{label}</div>
+                  <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 11, marginTop: 5 }}>{label}</div>
                 </div>
               ))}
             </div>
@@ -2066,32 +2066,32 @@ export default function ExtractPage({ cards, onImport }) {
               ['existing', `✓ 이미 보유 ${counts.existing}`],
             ].map(([tab, label]) => (
               <button key={tab} onClick={() => setFilterTab(tab)} style={{
-                background: filterTab === tab ? '#1e293b' : 'none', border: `1px solid ${filterTab === tab ? '#6366f1' : '#1e293b'}`, color: filterTab === tab ? '#e2e8f0' : '#475569', borderRadius: 8, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: filterTab === tab ? 600 : 400, whiteSpace: 'nowrap'
+                background: filterTab === tab ? 'var(--theme-button, #1e293b)' : 'none', border: `1px solid ${filterTab === tab ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-border, #1e293b)'}`, color: filterTab === tab ? 'var(--theme-text, #e2e8f0)' : 'var(--theme-textDim, #475569)', borderRadius: 8, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: filterTab === tab ? 600 : 400, whiteSpace: 'nowrap'
               }}>{label}</button>
             ))}
-            <button onClick={toggleAll} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #1e293b', borderRadius: 8, padding: '5px 12px', color: '#475569', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <button onClick={toggleAll} style={{ marginLeft: 'auto', background: 'none', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 8, padding: '5px 12px', color: 'var(--theme-textDim, #475569)', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               {visible.length > 0 && visible.every(({ i }) => selected.has(i)) ? '전체 해제' : '전체 선택'}
             </button>
           </div>
 
           <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ color: '#64748b', fontSize: 12, marginRight: 2 }}>검수 필터</span>
+            <span style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, marginRight: 2 }}>검수 필터</span>
             {REVIEW_FILTERS.map(([key, label]) => {
               const count = key === 'all' ? extracted.length : reviewCounts[key] ?? extracted.filter((c) => matchesReviewFilter(c, key)).length
               return (
                 <button key={key} onClick={() => setReviewFilter(key)} style={{
-                  background: reviewFilter === key ? 'rgba(99,102,241,0.16)' : 'none',
-                  border: `1px solid ${reviewFilter === key ? '#6366f1' : '#1e293b'}`,
-                  color: reviewFilter === key ? '#c4b5fd' : '#475569',
+                  background: reviewFilter === key ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'none',
+                  border: `1px solid ${reviewFilter === key ? 'var(--theme-accentStrong, #6366f1)' : 'var(--theme-border, #1e293b)'}`,
+                  color: reviewFilter === key ? 'var(--theme-accentText, #c4b5fd)' : 'var(--theme-textDim, #475569)',
                   borderRadius: 8, padding: '5px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap',
                 }}>{label} {count}</button>
               )
             })}
-            <span style={{ color: '#334155', fontSize: 12 }}>표시 {visible.length}장</span>
+            <span style={{ color: 'var(--theme-borderStrong, #334155)', fontSize: 12 }}>표시 {visible.length}장</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', overflowX: 'hidden', marginBottom: 14, width: '100%', boxSizing: 'border-box' }}>
-            {visible.length === 0 ? <div style={{ color: '#334155', textAlign: 'center', padding: '24px 0', fontSize: 13 }}>조건에 맞는 데이터 카드가 없습니다.</div> : visible.map(({ c, i }) => (
+            {visible.length === 0 ? <div style={{ color: 'var(--theme-borderStrong, #334155)', textAlign: 'center', padding: '24px 0', fontSize: 13 }}>조건에 맞는 데이터 카드가 없습니다.</div> : visible.map(({ c, i }) => (
                 <CardItem key={i} card={c} type={c._type} checked={selected.has(i)} onToggle={() => toggle(i)} onChange={(updated) => updateCard(i, updated)} onMergeExisting={(mode) => mergeWithExisting(i, mode)} topCategories={allTopCategories} subjects={allSubjects} getParts={getPartsForSubject} />
               ))
             }
@@ -2099,13 +2099,13 @@ export default function ExtractPage({ cards, onImport }) {
 
           <div style={{ display: 'flex', gap: 10, width: '100%', flexWrap: 'wrap' }}>
             <button
-              style={{ flex: 1, minWidth: '150px', background: selected.size === 0 ? '#1e293b' : 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: selected.size === 0 ? '#475569' : '#fff', border: 'none', borderRadius: 12, padding: '13px 20px', fontSize: 14, cursor: selected.size === 0 ? 'not-allowed' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap' }}
+              style={{ flex: 1, minWidth: '150px', background: selected.size === 0 ? 'var(--theme-button, #1e293b)' : 'var(--theme-accentGradient, linear-gradient(135deg,#6366f1,#8b5cf6))', color: selected.size === 0 ? 'var(--theme-textDim, #475569)' : 'var(--theme-onAccent, #fff)', border: 'none', borderRadius: 12, padding: '13px 20px', fontSize: 14, cursor: selected.size === 0 ? 'not-allowed' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap' }}
               disabled={selected.size === 0} onClick={doImport}
             >내 카드 서재에 추가 ({selected.size}개)</button>
-            <button onClick={reset} style={{ background: '#1e293b', color: '#94a3b8', border: 'none', flex: '0 0 auto', borderRadius: 12, padding: '13px 20px', fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap' }}>새로 추출</button>
+            <button onClick={reset} style={{ background: 'var(--theme-button, #1e293b)', color: 'var(--theme-textMuted, #94a3b8)', border: 'none', flex: '0 0 auto', borderRadius: 12, padding: '13px 20px', fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap' }}>새로 추출</button>
           </div>
 
-          {importMsg && <div style={{ marginTop: 10, textAlign: 'center', color: '#22c55e', fontSize: 13, fontWeight: 600 }}>{importMsg}</div>}
+          {importMsg && <div style={{ marginTop: 10, textAlign: 'center', color: 'var(--theme-success, #22c55e)', fontSize: 13, fontWeight: 600 }}>{importMsg}</div>}
         </div>
       )}
     </div>
