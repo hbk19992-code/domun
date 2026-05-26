@@ -17,10 +17,19 @@ import {
   subjectOrderKey
 } from '../utils/classification';
 
-const genToken = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+const genToken = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+};
+
 const CACHE_KEY = (uid) => `cards_cache_${uid}`;
 const REV_KEY = (uid) => `cache_rev_${uid}`;
+// LAST_CACHE_KEY는 "최초 부팅 시 빠르게 보여줄 직전 사용자 카드" 용도.
+// 사용자 전환 시 반드시 갱신되거나 비워져야 한다.
 const LAST_CACHE_KEY = 'cards_cache_last';
+const LAST_CACHE_UID_KEY = 'cards_cache_last_uid';
 const ORDER_KEY = (uid) => `classification_order_${uid}`;
 const LAST_ORDER_KEY = 'classification_order_last';
 
@@ -34,9 +43,29 @@ function readCardsFromStorage(key) {
   }
 }
 
-function writeCardsCache(key, cards) {
-  localStorage.setItem(key, JSON.stringify(cards));
-  localStorage.setItem(LAST_CACHE_KEY, JSON.stringify(cards));
+// 사용자 전용 캐시 + LAST 캐시를 함께 갱신. 단, LAST는 현재 uid 정보도 같이 적어둔다.
+function writeCardsCache(userKey, cards, uid) {
+  try {
+    const serialized = JSON.stringify(cards);
+    localStorage.setItem(userKey, serialized);
+    localStorage.setItem(LAST_CACHE_KEY, serialized);
+    if (uid) localStorage.setItem(LAST_CACHE_UID_KEY, uid);
+  } catch (e) {
+    // localStorage가 가득 차거나 비활성화된 경우. 메모리 상태는 그대로 유지.
+    console.warn('카드 캐시 저장 실패:', e);
+  }
+}
+
+function clearLastCacheIfDifferentUser(currentUid) {
+  if (!currentUid) return;
+  try {
+    const lastUid = localStorage.getItem(LAST_CACHE_UID_KEY);
+    if (lastUid && lastUid !== currentUid) {
+      // 다른 사용자 데이터 잔여 - LAST 캐시 비우기
+      localStorage.removeItem(LAST_CACHE_KEY);
+      localStorage.removeItem(LAST_CACHE_UID_KEY);
+    }
+  } catch {}
 }
 
 function readClassificationOrder(key) {
@@ -49,12 +78,18 @@ function readClassificationOrder(key) {
 
 function writeClassificationOrderCache(key, order) {
   const normalized = normalizeClassificationOrder(order);
-  localStorage.setItem(key, JSON.stringify(normalized));
-  localStorage.setItem(LAST_ORDER_KEY, JSON.stringify(normalized));
+  try {
+    localStorage.setItem(key, JSON.stringify(normalized));
+    localStorage.setItem(LAST_ORDER_KEY, JSON.stringify(normalized));
+  } catch (e) {
+    console.warn('분류 순서 캐시 저장 실패:', e);
+  }
 }
 
 export function useCards() {
   const [userCards, setUserCards] = useState(() => {
+    // 부팅 시점에는 LAST 캐시를 그대로 신뢰 (실제 uid는 onAuthStateChanged에서 확정).
+    // 사용자가 바뀌면 아래 effect에서 즉시 검증하여 잘못된 잔여 데이터는 비운다.
     const last = readCardsFromStorage(LAST_CACHE_KEY);
     return last.length > 0 ? last : readCardsFromStorage('mnemonic_user_cards');
   });
@@ -96,17 +131,17 @@ export function useCards() {
       }
 
       setUserCards(fetched);
-      writeCardsCache(CACHE_KEY(currentUid), fetched);
-      
+      writeCardsCache(CACHE_KEY(currentUid), fetched, currentUid);
+
       const newRev = serverRev || genToken();
       localRevRef.current = newRev;
-      localStorage.setItem(REV_KEY(currentUid), newRev);
+      try { localStorage.setItem(REV_KEY(currentUid), newRev); } catch {}
 
       if (!serverRev) {
         await setDoc(doc(db, 'users', currentUid, 'meta', 'cards'), { rev: newRev }, { merge: true });
       }
     } catch (e) {
-      console.error("전체 동기화 실패:", e);
+      console.error('전체 동기화 실패:', e);
       setSyncError('클라우드 동기화가 지연되고 있습니다. 로컬 데이터로 먼저 사용할 수 있습니다.');
     } finally {
       syncInFlightRef.current = false;
@@ -121,9 +156,10 @@ export function useCards() {
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        try { await signInAnonymously(auth); } 
-        catch (err) {
-          console.error("익명 로그인 실패:", err);
+        try {
+          await signInAnonymously(auth);
+        } catch (err) {
+          console.error('익명 로그인 실패:', err);
           setSyncError('클라우드 로그인이 지연되고 있습니다. 로컬 데이터로 먼저 사용할 수 있습니다.');
           setLoading(false);
         }
@@ -135,6 +171,9 @@ export function useCards() {
       const currentUid = user.uid;
       setUid(currentUid);
       uidRef.current = currentUid;
+
+      // 다른 사용자로 전환됐다면 LAST 캐시 정리. 사용자별 캐시는 그대로 둔다(나중에 돌아올 수도).
+      clearLastCacheIfDifferentUser(currentUid);
 
       const cachedOrder = readClassificationOrder(ORDER_KEY(currentUid));
       if (
@@ -151,11 +190,24 @@ export function useCards() {
       if (hasUserCache) {
         try {
           const cachedCards = JSON.parse(cachedData);
-          if (Array.isArray(cachedCards)) setUserCards(cachedCards);
+          if (Array.isArray(cachedCards)) {
+            setUserCards(cachedCards);
+            // LAST 캐시도 현재 사용자 기준으로 동기화
+            try {
+              localStorage.setItem(LAST_CACHE_KEY, cachedData);
+              localStorage.setItem(LAST_CACHE_UID_KEY, currentUid);
+            } catch {}
+          }
           localRevRef.current = cachedRev;
           setLoading(false);
-        } catch(e) {}
+        } catch (e) {}
       } else {
+        // 캐시가 없으니 화면 잔상도 비운다 (이전 사용자 카드가 보이는 사고 방지)
+        setUserCards([]);
+        try {
+          localStorage.removeItem(LAST_CACHE_KEY);
+          localStorage.removeItem(LAST_CACHE_UID_KEY);
+        } catch {}
         setLoading(false);
         fullSync(currentUid, null);
       }
@@ -163,16 +215,16 @@ export function useCards() {
       const metaRef = doc(db, 'users', currentUid, 'meta', 'cards');
       unsubscribeMeta = onSnapshot(metaRef, (metaSnap) => {
         const serverRev = metaSnap.exists() ? metaSnap.data().rev : null;
-        
+
         if (!localRevRef.current || serverRev !== localRevRef.current) {
           fullSync(currentUid, serverRev);
         } else {
           setSyncing(false);
         }
-        
+
         setLoading(false);
       }, (err) => {
-        console.error("메타데이터 리스너 오류:", err);
+        console.error('메타데이터 리스너 오류:', err);
         setSyncError('클라우드 동기화가 지연되고 있습니다. 로컬 데이터로 먼저 사용할 수 있습니다.');
         setSyncing(false);
         setLoading(false);
@@ -185,7 +237,7 @@ export function useCards() {
         setClassificationOrder(nextOrder);
         writeClassificationOrderCache(ORDER_KEY(currentUid), nextOrder);
       }, (err) => {
-        console.error("분류 순서 동기화 오류:", err);
+        console.error('분류 순서 동기화 오류:', err);
       });
     });
 
@@ -210,7 +262,7 @@ export function useCards() {
           { merge: true }
         );
       } catch (err) {
-        console.error("분류 순서 저장 실패:", err);
+        console.error('분류 순서 저장 실패:', err);
         setSyncError('분류 순서 저장이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
       }
     } else {
@@ -222,36 +274,54 @@ export function useCards() {
     const currentUid = uidRef.current;
     if (!currentUid) {
       setUserCards(nextCards);
-      writeCardsCache('mnemonic_user_cards', nextCards);
+      writeCardsCache('mnemonic_user_cards', nextCards, null);
       return;
     }
 
+    // Optimistic update + 실패 시 복구
+    const prevCards = userCards;
+    const prevRev = localRevRef.current;
     const newRev = genToken();
     localRevRef.current = newRev;
     setUserCards(nextCards);
-    writeCardsCache(CACHE_KEY(currentUid), nextCards);
-    localStorage.setItem(REV_KEY(currentUid), newRev);
+    writeCardsCache(CACHE_KEY(currentUid), nextCards, currentUid);
+    try { localStorage.setItem(REV_KEY(currentUid), newRev); } catch {}
 
-    const ops = buildBatchFunc();
-    const CHUNK_SIZE = 400;
-    
-    for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
-      const chunk = ops.slice(i, i + CHUNK_SIZE);
-      const batch = writeBatch(db);
-      
-      chunk.forEach(op => {
-        if (op.type === 'set') batch.set(op.ref, op.data, op.options);
-        else if (op.type === 'delete') batch.delete(op.ref);
-      });
+    try {
+      const ops = buildBatchFunc();
+      const CHUNK_SIZE = 400;
 
-      if (i + CHUNK_SIZE >= ops.length) {
-        const metaRef = doc(db, 'users', currentUid, 'meta', 'cards');
-        batch.set(metaRef, { rev: newRev }, { merge: true });
+      for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
+        const chunk = ops.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+
+        chunk.forEach(op => {
+          if (op.type === 'set') batch.set(op.ref, op.data, op.options);
+          else if (op.type === 'delete') batch.delete(op.ref);
+        });
+
+        if (i + CHUNK_SIZE >= ops.length) {
+          const metaRef = doc(db, 'users', currentUid, 'meta', 'cards');
+          batch.set(metaRef, { rev: newRev }, { merge: true });
+        }
+
+        await batch.commit();
       }
-      
-      await batch.commit();
+      // 성공
+      setSyncError('');
+    } catch (err) {
+      // 실패: 로컬 상태 롤백 + 에러 노출
+      console.error('카드 저장 실패:', err);
+      setUserCards(prevCards);
+      writeCardsCache(CACHE_KEY(currentUid), prevCards, currentUid);
+      localRevRef.current = prevRev;
+      if (prevRev) {
+        try { localStorage.setItem(REV_KEY(currentUid), prevRev); } catch {}
+      }
+      setSyncError('카드 저장에 실패했습니다. 네트워크를 확인하고 다시 시도해 주세요.');
+      throw err;
     }
-  }, []);
+  }, [userCards]);
 
   const visibleUserCards = useMemo(
     () => userCards.filter((card) => !builtinCards.some((builtin) => isDuplicate(builtin, card))),
@@ -270,10 +340,10 @@ export function useCards() {
 
   const addCard = useCallback(async (card) => {
     if (!uidRef.current) return;
-    const docRef = doc(collection(db, 'dummy')); 
+    const docRef = doc(collection(db, 'dummy'));
     const newCard = { ...card, id: docRef.id };
     const nextCards = [...userCards, newCard];
-    
+
     await commitOps(nextCards, () => [
       { type: 'set', ref: doc(db, 'users', uidRef.current, 'cards', newCard.id), data: newCard }
     ]);
@@ -281,11 +351,16 @@ export function useCards() {
 
   const addCards = useCallback(async (incoming) => {
     if (!uidRef.current) return { added: 0, updated: 0 };
+    if (!Array.isArray(incoming) || incoming.length === 0) return { added: 0, updated: 0 };
+
+    // existing은 기준이 되는 카드 집합. 새로 추가된 카드도 다음 비교의 기준으로 들어가야
+    // incoming 내부에서 같은 카드 두 번 들어오는 케이스를 막을 수 있다.
     const existing = [...builtinCards, ...userCards];
     const newCards = [];
     const topCategoryUpdates = new Map();
 
     incoming.forEach((card) => {
+      if (!card || typeof card !== 'object') return;
       const match = existing.find((e) => isDuplicate(e, card));
       if (!match) {
         newCards.push(card);
@@ -293,27 +368,42 @@ export function useCards() {
         return;
       }
 
+      // 매칭된 게 builtin이면 사용자 카드가 아니라 변경 불가
       const currentUserCard = userCards.find((c) => c.id && c.id === match.id);
+      if (!currentUserCard) return;
+
       const incomingTop = getTopCategory(card);
       const currentTop = getTopCategory(match);
-      if (currentUserCard && incomingTop !== DEFAULT_TOP_CATEGORY && currentTop === DEFAULT_TOP_CATEGORY) {
-        topCategoryUpdates.set(currentUserCard.id, { ...currentUserCard, topCategory: incomingTop });
+      // 기본값 → 의미있는 값으로 보강만 허용 (사용자가 분류한 걸 덮어쓰지 않음)
+      if (incomingTop !== DEFAULT_TOP_CATEGORY && currentTop === DEFAULT_TOP_CATEGORY) {
+        // Map은 키 중복 시 마지막 값으로 덮으므로 안전. 같은 id에 여러 incoming이 있어도
+        // 마지막 incoming의 topCategory가 적용됨.
+        topCategoryUpdates.set(currentUserCard.id, {
+          id: currentUserCard.id,
+          topCategory: incomingTop,
+        });
       }
     });
 
     const cardsToAdd = newCards.map(c => ({ ...c, id: doc(collection(db, 'dummy')).id }));
-    if (cardsToAdd.length === 0 && topCategoryUpdates.size === 0) return { added: 0, updated: 0 };
+    if (cardsToAdd.length === 0 && topCategoryUpdates.size === 0) {
+      return { added: 0, updated: 0 };
+    }
 
+    const updateById = new Map(Array.from(topCategoryUpdates.values()).map((u) => [u.id, u]));
     const nextCards = [
-      ...userCards.map((card) => topCategoryUpdates.get(card.id) || card),
-      ...cardsToAdd
+      ...userCards.map((card) => {
+        const u = updateById.get(card.id);
+        return u ? { ...card, topCategory: u.topCategory } : card;
+      }),
+      ...cardsToAdd,
     ];
 
     await commitOps(nextCards, () => [
-      ...Array.from(topCategoryUpdates.values()).map(card => ({
+      ...Array.from(topCategoryUpdates.values()).map(u => ({
         type: 'set',
-        ref: doc(db, 'users', uidRef.current, 'cards', card.id),
-        data: { topCategory: card.topCategory },
+        ref: doc(db, 'users', uidRef.current, 'cards', u.id),
+        data: { topCategory: u.topCategory },
         options: { merge: true }
       })),
       ...cardsToAdd.map(card => ({
@@ -326,7 +416,7 @@ export function useCards() {
   const updateCard = useCallback(async (id, updated) => {
     if (!uidRef.current || !id) return;
     const nextCards = userCards.map(c => c.id === id ? { ...c, ...updated } : c);
-    
+
     await commitOps(nextCards, () => [
       { type: 'set', ref: doc(db, 'users', uidRef.current, 'cards', id), data: updated, options: { merge: true } }
     ]);
@@ -364,7 +454,7 @@ export function useCards() {
   const deleteCard = useCallback(async (id) => {
     if (!uidRef.current || !id) return;
     const nextCards = userCards.filter(c => c.id !== id);
-    
+
     await commitOps(nextCards, () => [
       { type: 'delete', ref: doc(db, 'users', uidRef.current, 'cards', id) }
     ]);
@@ -374,7 +464,7 @@ export function useCards() {
     if (!uidRef.current) return 0;
     let removed = 0;
     const toDeleteIds = new Set();
-    
+
     userCards.forEach((c) => {
       const mt = matchesTopCategory(c, topCategory);
       const ms = !subject || subject === '전체' || c.subject === subject;
@@ -387,8 +477,8 @@ export function useCards() {
 
     if (removed === 0) return 0;
     const nextCards = userCards.filter(c => !toDeleteIds.has(c.id));
-    
-    await commitOps(nextCards, () => 
+
+    await commitOps(nextCards, () =>
       Array.from(toDeleteIds).map(id => ({
         type: 'delete', ref: doc(db, 'users', uidRef.current, 'cards', id)
       }))
@@ -429,7 +519,7 @@ export function useCards() {
     });
 
     if (updatedCount > 0) {
-      await commitOps(nextCards, () => 
+      await commitOps(nextCards, () =>
         updates.map(card => ({
           type: 'set',
           ref: doc(db, 'users', uidRef.current, 'cards', card.id),
@@ -450,7 +540,7 @@ export function useCards() {
     userCards.forEach((card) => {
       const isBuiltinDup = builtinCards.some((b) => isDuplicate(b, card));
       const isSelfDup = kept.some((k) => isDuplicate(k, card));
-      
+
       if (isBuiltinDup || isSelfDup) {
         toDeleteIds.push(card.id);
         removed++;
@@ -458,9 +548,9 @@ export function useCards() {
         kept.push(card);
       }
     });
-    
+
     if (removed > 0) {
-      await commitOps(kept, () => 
+      await commitOps(kept, () =>
         toDeleteIds.map(id => ({
           type: 'delete', ref: doc(db, 'users', uidRef.current, 'cards', id)
         }))
@@ -517,14 +607,25 @@ export function useCards() {
       }
     } catch (err) {
       if (err.code === 'auth/credential-already-in-use') {
-        alert("이미 사용 중인 구글 계정입니다. 기존 계정으로 로그인합니다.");
+        alert('이미 사용 중인 구글 계정입니다. 기존 계정으로 로그인합니다.');
         await signInWithPopup(auth, googleProvider);
       }
     }
   }, []);
 
   const handleLogout = useCallback(async () => {
-    try { await signOut(auth); } catch (err) { console.error("로그아웃 실패:", err); }
+    try {
+      // 로그아웃 시 LAST 캐시 잔여를 비워 다른 사용자가 같은 기기에서
+      // 이전 카드를 잠깐이라도 보지 않게 한다.
+      try {
+        localStorage.removeItem(LAST_CACHE_KEY);
+        localStorage.removeItem(LAST_CACHE_UID_KEY);
+      } catch {}
+      setUserCards([]);
+      await signOut(auth);
+    } catch (err) {
+      console.error('로그아웃 실패:', err);
+    }
   }, []);
 
   const duplicateCount = useMemo(() => {
