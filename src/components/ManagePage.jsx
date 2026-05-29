@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { answerLabel, answerPlaceholder, cardKindLabel, getCardKind, isAnswerCard } from '../utils/cardType'
-import { DEFAULT_TOP_CATEGORY, getTopCategory, matchesTopCategory, normalizeClassificationOrder, partOrderKey, rebuildClassificationOrder, subjectOrderKey, sortLabelsByOrder } from '../utils/classification'
+import { DEFAULT_TOP_CATEGORY, GLOBAL_ORDER_KEY, getTopCategory, matchesTopCategory, normalizeClassificationOrder, partOrderKey, rebuildClassificationOrder, subjectOrderKey, sortLabelsByOrder } from '../utils/classification'
 import { ThemePickerCard } from './ThemePicker'
 
 const S = {
@@ -158,6 +158,90 @@ function countOrderFootprint(order) {
     + partLists.reduce((sum, list) => sum + list.length, 0)
 }
 
+function keyLabel(key) {
+  return key === GLOBAL_ORDER_KEY ? '전체' : key
+}
+
+function emptyClassificationItems(order, cleanedOrder) {
+  const current = normalizeClassificationOrder(order)
+  const cleaned = normalizeClassificationOrder(cleanedOrder)
+  const items = []
+  const cleanedTopSet = new Set(cleaned.topCategories)
+
+  current.topCategories.forEach((label) => {
+    if (!cleanedTopSet.has(label)) {
+      items.push({ type: 'top', key: label, label, path: label, title: '빈 대분류' })
+    }
+  })
+
+  Object.entries(current.subjects).forEach(([key, list]) => {
+    const cleanedSet = new Set(cleaned.subjects[key] || [])
+    list.forEach((label) => {
+      if (!cleanedSet.has(label)) {
+        items.push({ type: 'subject', key, label, path: `${keyLabel(key)} > ${label}`, title: '빈 과목' })
+      }
+    })
+  })
+
+  Object.entries(current.parts).forEach(([key, list]) => {
+    const [topKey, subject = ''] = key.split('\u0000')
+    const cleanedSet = new Set(cleaned.parts[key] || [])
+    list.forEach((label) => {
+      if (!cleanedSet.has(label)) {
+        items.push({ type: 'part', key, label, path: `${keyLabel(topKey)} > ${subject || '과목 없음'} > ${label}`, title: '빈 단원' })
+      }
+    })
+  })
+
+  return items
+}
+
+function removeEmptyClassificationItem(order, item) {
+  const normalized = normalizeClassificationOrder(order)
+  if (!item) return normalized
+
+  if (item.type === 'top') {
+    const top = item.label
+    const subjects = Object.fromEntries(
+      Object.entries(normalized.subjects).filter(([key]) => key !== top)
+    )
+    const parts = Object.fromEntries(
+      Object.entries(normalized.parts).filter(([key]) => !key.startsWith(`${top}\u0000`))
+    )
+    return {
+      topCategories: normalized.topCategories.filter((label) => label !== top),
+      subjects,
+      parts,
+    }
+  }
+
+  if (item.type === 'subject') {
+    const subject = item.label
+    const topKey = item.key
+    const subjects = {
+      ...normalized.subjects,
+      [topKey]: (normalized.subjects[topKey] || []).filter((label) => label !== subject),
+    }
+    if (subjects[topKey].length === 0) delete subjects[topKey]
+
+    const parts = Object.fromEntries(
+      Object.entries(normalized.parts).filter(([key]) => key !== `${topKey}\u0000${subject}`)
+    )
+    return { ...normalized, subjects, parts }
+  }
+
+  if (item.type === 'part') {
+    const parts = {
+      ...normalized.parts,
+      [item.key]: (normalized.parts[item.key] || []).filter((label) => label !== item.label),
+    }
+    if (parts[item.key].length === 0) delete parts[item.key]
+    return { ...normalized, parts }
+  }
+
+  return normalized
+}
+
 function mergeOrder(orderList, labels) {
   return sortLabelsByOrder(labels, orderList)
 }
@@ -275,6 +359,14 @@ export default function ManagePage({ cards }) {
   const classificationResidueCount = useMemo(
     () => Math.max(0, countOrderFootprint(safeClassificationOrder) - countOrderFootprint(cleanedClassificationOrder)),
     [safeClassificationOrder, cleanedClassificationOrder]
+  )
+  const emptyClassifications = useMemo(
+    () => emptyClassificationItems(safeClassificationOrder, cleanedClassificationOrder),
+    [safeClassificationOrder, cleanedClassificationOrder]
+  )
+  const emptyClassificationPreview = useMemo(
+    () => emptyClassifications.slice(0, 12),
+    [emptyClassifications]
   )
 
   const getSubjectOptions = (topCategory) => {
@@ -490,6 +582,12 @@ export default function ManagePage({ cards }) {
     Promise.resolve(saveClassificationOrder(cleanedClassificationOrder))
       .then(() => alert(classificationResidueCount > 0 ? '남아 있던 분류 순서값을 정리했습니다.' : '분류 순서를 현재 카드 기준으로 다시 저장했습니다.'))
   }
+  const handleDeleteEmptyClassification = (item) => {
+    if (typeof saveClassificationOrder !== 'function' || !item) return
+    if (!window.confirm(`[${item.title}] ${item.path}\n\n이 빈 분류를 삭제합니다. 카드 내용은 삭제되지 않습니다.`)) return
+    Promise.resolve(saveClassificationOrder(removeEmptyClassificationItem(safeClassificationOrder, item)))
+      .then(() => alert('빈 분류를 삭제했습니다.'))
+  }
 
   // 필터링된 실시간 유저 카드 목록 계산
   const filteredUserCards = useMemo(() => {
@@ -667,17 +765,49 @@ export default function ManagePage({ cards }) {
           <div style={{ minWidth: 220, flex: 1 }}>
             <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 13, fontWeight: 800 }}>분류 구조 정리</div>
             <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, lineHeight: 1.5, marginTop: 3 }}>
-              실제 카드에 없는 대분류·과목·단원 순서값을 지웁니다. 현재 잔여값 {classificationResidueCount}개
+              실제 카드에 없는 대분류·과목·단원 순서값을 지웁니다. 현재 빈 분류 {emptyClassifications.length}개
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" style={{ ...S.btn(false), padding: '9px 12px' }} onClick={handleCleanClassificationOrder}>
-              잔여 분류값 정리
+              빈 분류 전체 삭제
             </button>
             <button type="button" style={{ ...S.btn(false), padding: '9px 12px' }} onClick={() => setManageSection('organize')}>
               폴더 일괄 변경으로 이동
             </button>
           </div>
+        </div>
+        <div style={{ background: 'var(--theme-input, #0a0f1e)', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 12, padding: 12, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+            <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 13, fontWeight: 800 }}>빈껍데기 분류</div>
+            <span style={S.badge}>{emptyClassifications.length}개</span>
+          </div>
+          {emptyClassifications.length === 0 ? (
+            <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, lineHeight: 1.5 }}>
+              삭제할 빈 분류가 없습니다.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 8 }}>
+              {emptyClassificationPreview.map((item, index) => (
+                <div key={`${item.type}-${item.key}-${item.label}-${index}`} style={{ background: 'var(--theme-elevated, #0f172a)', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 10, padding: 10, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ color: 'var(--theme-accentText, #e0e7ff)', fontSize: 12, fontWeight: 800 }}>{item.title}</div>
+                    <div title={item.path} style={{ color: 'var(--theme-textMuted, #94a3b8)', fontSize: 12, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.path}
+                    </div>
+                  </div>
+                  <button type="button" style={{ ...S.btn(true), padding: '8px 10px', fontSize: 12 }} onClick={() => handleDeleteEmptyClassification(item)}>
+                    삭제
+                  </button>
+                </div>
+              ))}
+              {emptyClassifications.length > emptyClassificationPreview.length && (
+                <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, lineHeight: 1.5, padding: 10 }}>
+                  외 {emptyClassifications.length - emptyClassificationPreview.length}개가 더 있습니다. 전체 삭제 버튼으로 한 번에 정리할 수 있습니다.
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <div style={S.orderGrid}>
           <OrderList
