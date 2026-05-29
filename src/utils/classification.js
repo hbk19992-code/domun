@@ -57,6 +57,62 @@ export function normalizeClassificationOrder(order = {}) {
   }
 }
 
+function addLabelToMap(map, key, label) {
+  const cleanKey = cleanLabel(key)
+  const cleanValue = cleanLabel(label)
+  if (!cleanKey || !cleanValue) return
+  if (!map.has(cleanKey)) map.set(cleanKey, [])
+  map.get(cleanKey).push(cleanValue)
+}
+
+function keepExistingThenAppend(existing = [], actual = []) {
+  const actualLabels = uniqueLabels(actual)
+  const actualSet = new Set(actualLabels)
+  const kept = uniqueLabels(existing).filter((label) => actualSet.has(label))
+  const keptSet = new Set(kept)
+  return [...kept, ...actualLabels.filter((label) => !keptSet.has(label))]
+}
+
+function rebuildOrderMap(existingMap = {}, actualMap = new Map()) {
+  const result = {}
+  actualMap.forEach((actualLabels, key) => {
+    const next = keepExistingThenAppend(existingMap[key], actualLabels)
+    if (next.length > 0) result[key] = next
+  })
+  return result
+}
+
+export function rebuildClassificationOrder(cards = [], order = {}) {
+  const normalized = normalizeClassificationOrder(order)
+  const topLabels = []
+  const subjectLabels = new Map()
+  const partLabels = new Map()
+
+  ;(Array.isArray(cards) ? cards : []).forEach((card) => {
+    const topCategory = getTopCategory(card)
+    const subject = cleanLabel(card?.subject)
+    const part = cleanLabel(card?.part)
+
+    topLabels.push(topCategory)
+
+    if (subject) {
+      addLabelToMap(subjectLabels, subjectOrderKey(GLOBAL_ORDER_KEY), subject)
+      addLabelToMap(subjectLabels, subjectOrderKey(topCategory), subject)
+    }
+
+    if (subject && part) {
+      addLabelToMap(partLabels, partOrderKey(GLOBAL_ORDER_KEY, subject), part)
+      addLabelToMap(partLabels, partOrderKey(topCategory, subject), part)
+    }
+  })
+
+  return {
+    topCategories: keepExistingThenAppend(normalized.topCategories, topLabels),
+    subjects: rebuildOrderMap(normalized.subjects, subjectLabels),
+    parts: rebuildOrderMap(normalized.parts, partLabels),
+  }
+}
+
 function orderRank(label, orderList = []) {
   const order = uniqueLabels(orderList)
   const index = order.indexOf(cleanLabel(label))

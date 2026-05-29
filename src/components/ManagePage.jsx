@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { answerLabel, answerPlaceholder, cardKindLabel, getCardKind, isAnswerCard } from '../utils/cardType'
-import { DEFAULT_TOP_CATEGORY, getTopCategory, matchesTopCategory, normalizeClassificationOrder, partOrderKey, subjectOrderKey, sortLabelsByOrder } from '../utils/classification'
+import { DEFAULT_TOP_CATEGORY, getTopCategory, matchesTopCategory, normalizeClassificationOrder, partOrderKey, rebuildClassificationOrder, subjectOrderKey, sortLabelsByOrder } from '../utils/classification'
 import { ThemePickerCard } from './ThemePicker'
 
 const S = {
@@ -111,7 +111,7 @@ function DataListInput({ id, value, onChange, placeholder, style, options }) {
   const safeOptions = Array.isArray(options) ? options : []
   return (
     <div style={{ flex: 1, width: '100%', minWidth: 0 }}>
-      <input style={style} value={value || ''} onChange={onChange} placeholder={placeholder} list={id} />
+      <input style={{ ...style, width: '100%', boxSizing: 'border-box' }} value={value || ''} onChange={onChange} placeholder={placeholder} list={id} />
       <datalist id={id}>
         {safeOptions.map((opt, i) => <option key={i} value={opt != null ? String(opt) : ''} />)}
       </datalist>
@@ -136,6 +136,26 @@ function summarizeLabels(values, fallback) {
   if (labels.length === 0) return fallback
   if (labels.length <= 2) return labels.join(', ')
   return `${labels.slice(0, 2).join(', ')} 외 ${labels.length - 2}`
+}
+
+function folderPath(top, subject, part) {
+  return [top || '전체', subject || '전체', part || '전체'].join(' > ')
+}
+
+function cardLine(card) {
+  const title = card?.question || card?.mnemonic || card?.answer || '내용 없음'
+  return `${folderPath(getTopCategory(card), card?.subject || '미분류', card?.part || '미분류')} · ${title}`
+}
+
+function countOrderFootprint(order) {
+  const normalized = normalizeClassificationOrder(order)
+  const subjectLists = Object.values(normalized.subjects)
+  const partLists = Object.values(normalized.parts)
+  return normalized.topCategories.length
+    + Object.keys(normalized.subjects).length
+    + Object.keys(normalized.parts).length
+    + subjectLists.reduce((sum, list) => sum + list.length, 0)
+    + partLists.reduce((sum, list) => sum + list.length, 0)
 }
 
 function mergeOrder(orderList, labels) {
@@ -248,6 +268,14 @@ export default function ManagePage({ cards }) {
     () => normalizeClassificationOrder(classificationOrder),
     [classificationOrder]
   )
+  const cleanedClassificationOrder = useMemo(
+    () => rebuildClassificationOrder(userCards, safeClassificationOrder),
+    [userCards, safeClassificationOrder]
+  )
+  const classificationResidueCount = useMemo(
+    () => Math.max(0, countOrderFootprint(safeClassificationOrder) - countOrderFootprint(cleanedClassificationOrder)),
+    [safeClassificationOrder, cleanedClassificationOrder]
+  )
 
   const getSubjectOptions = (topCategory) => {
     if (typeof subjectsForTop === 'function') return subjectsForTop(topCategory)
@@ -357,7 +385,44 @@ export default function ManagePage({ cards }) {
 
   const targetCount = countBy({ topCategory: delTop, subject: delSub, part: delPart })
   const targetEditCount = countBy({ topCategory: editOldTop, subject: editOldSub, part: editOldPart })
+  const hasRenameTarget = !!editNewTop.trim() || !!editNewSub.trim() || !!editNewPart.trim()
+  const canRenameFolder = targetEditCount > 0 && hasRenameTarget
   const canBatchRename = activeBatchCards.length > 0 && (!!batchNewTop.trim() || !!batchNewSub.trim() || !!batchNewPart.trim())
+  const renameTargetTop = editNewTop.trim() || editOldTop
+  const renameTargetSubject = editNewSub.trim() || editOldSub
+  const renameTargetPart = editNewPart.trim() || editOldPart
+  const renameSourcePath = folderPath(editOldTop, editOldSub, editOldPart)
+  const renameTargetPath = folderPath(renameTargetTop, renameTargetSubject, renameTargetPart)
+  const editTargetCards = useMemo(() => {
+    return userCards.filter((card) => {
+      const matchTop = matchesTopCategory(card, editOldTop)
+      const matchSub = editOldSub === '전체' || card.subject === editOldSub
+      const matchPart = editOldPart === '전체' || card.part === editOldPart
+      return matchTop && matchSub && matchPart
+    })
+  }, [userCards, editOldTop, editOldSub, editOldPart])
+  const editTargetPreview = useMemo(() => editTargetCards.slice(0, 4), [editTargetCards])
+  const editNewSubjectOptions = useMemo(() => {
+    const targetTop = editNewTop.trim() || editOldTop
+    const scopedSubjects = targetTop === '전체' ? subjects : getSubjectOptions(targetTop)
+    return [...new Set([...(scopedSubjects || []), ...(subjects || [])].filter(Boolean))]
+  }, [editNewTop, editOldTop, subjects, subjectsForTop])
+  const editNewPartOptions = useMemo(() => {
+    const targetTop = editNewTop.trim() || editOldTop
+    const targetSubject = editNewSub.trim() || editOldSub
+    if (targetSubject && targetSubject !== '전체') return parts(targetSubject, targetTop)
+    return [...new Set([...editOptions, ...userCards.map((card) => card.part).filter(Boolean)])]
+  }, [editNewTop, editNewSub, editOldTop, editOldSub, editOptions, userCards, parts])
+  const batchTargetPath = folderPath(
+    batchNewTop.trim() || '기존 대분류 유지',
+    batchNewSub.trim() || '기존 과목 유지',
+    batchNewPart.trim() || '기존 단원 유지'
+  )
+  const batchSubjectOptions = useMemo(() => {
+    const targetTop = batchNewTop.trim()
+    return targetTop ? getSubjectOptions(targetTop) : subjects
+  }, [batchNewTop, subjects, subjectsForTop])
+  const batchPreviewCards = useMemo(() => activeBatchCards.slice(0, 4), [activeBatchCards])
 
   // 새 카드 추가용 자식 파트 옵션 추출
   const newSubjectOptions = useMemo(() => getSubjectOptions(newTop), [newTop, subjects, subjectsForTop])
@@ -415,6 +480,16 @@ export default function ManagePage({ cards }) {
       }
     })
   }
+  const handleCleanClassificationOrder = () => {
+    if (typeof saveClassificationOrder !== 'function') return
+    const message = classificationResidueCount > 0
+      ? `실제 카드에 없는 분류 순서값 ${classificationResidueCount}개를 정리합니다.\n카드 내용은 바뀌지 않고, 표시 순서 저장값만 정리됩니다.`
+      : '현재 카드 기준으로 분류 순서를 다시 저장합니다.\n카드 내용은 바뀌지 않습니다.'
+
+    if (!window.confirm(message)) return
+    Promise.resolve(saveClassificationOrder(cleanedClassificationOrder))
+      .then(() => alert(classificationResidueCount > 0 ? '남아 있던 분류 순서값을 정리했습니다.' : '분류 순서를 현재 카드 기준으로 다시 저장했습니다.'))
+  }
 
   // 필터링된 실시간 유저 카드 목록 계산
   const filteredUserCards = useMemo(() => {
@@ -451,8 +526,17 @@ export default function ManagePage({ cards }) {
   }
 
   const handleRename = () => {
-    if (targetEditCount === 0 || (!editNewTop.trim() && !editNewSub.trim() && !editNewPart.trim())) return
-    if (window.confirm(`[${editOldTop} > ${editOldSub} > ${editOldPart}] 폴더 범위의 카드 ${targetEditCount}개를 일괄 변경하시겠습니까?`)) {
+    if (!canRenameFolder) return
+    const preview = editTargetPreview.map((card) => `- ${cardLine(card)}`).join('\n')
+    const confirmMessage = [
+      `[${renameSourcePath}] 범위의 카드 ${targetEditCount}개를 일괄 변경합니다.`,
+      '',
+      `변경 후: ${renameTargetPath}`,
+      '변경 뒤 남는 예전 분류 순서값도 같이 정리합니다.',
+      preview ? `\n미리보기\n${preview}` : '',
+    ].filter(Boolean).join('\n')
+
+    if (window.confirm(confirmMessage)) {
       renameFolder({
         oldTopCategory: editOldTop,
         oldSubject: editOldSub,
@@ -461,7 +545,10 @@ export default function ManagePage({ cards }) {
         newSubject: editNewSub.trim(),   // 빈 값이면 renameFolder가 기존 과목명 유지
         newPart: editNewPart.trim()      // 빈 값이면 renameFolder가 기존 단원명 유지
       }).then((count) => {
-        alert(`${count}개의 카드가 성공적으로 이동 및 수정되었습니다.`);
+        alert(`${count}개의 카드가 성공적으로 이동 및 수정되었습니다. 남는 분류 순서값도 정리했습니다.`);
+        if (renameTargetTop && renameTargetTop !== '전체') setEditOldTop(renameTargetTop);
+        if (renameTargetSubject && renameTargetSubject !== '전체') setEditOldSub(renameTargetSubject);
+        if (renameTargetPart && renameTargetPart !== '전체') setEditOldPart(renameTargetPart);
         setEditNewTop('');
         setEditNewSub('');
         setEditNewPart('');
@@ -480,13 +567,13 @@ export default function ManagePage({ cards }) {
     if (nextSubject) patch.subject = nextSubject
     if (nextPart) patch.part = nextPart
 
-    const preview = activeBatchCards.slice(0, 3)
-      .map((card) => `- ${getTopCategory(card)} > ${card.subject || '미분류'} > ${card.part || '미분류'}: ${card.question || '질문 없음'}`)
+    const preview = batchPreviewCards
+      .map((card) => `- ${cardLine(card)}`)
       .join('\n')
 
-    if (window.confirm(`[${activeBatch?.source || 'AI 추출'}] 묶음의 카드 ${activeBatchCards.length}개를 일괄 변경하시겠습니까?\n\n${preview}`)) {
+    if (window.confirm(`[${activeBatch?.source || 'AI 추출'}] 묶음의 카드 ${activeBatchCards.length}개를 일괄 변경합니다.\n\n변경 후: ${batchTargetPath}\n변경 뒤 남는 예전 분류 순서값도 같이 정리합니다.\n\n${preview}`)) {
       updateCardsByIds(activeBatchCards.map((card) => card.id), patch).then((count) => {
-        alert(`${count}개의 최근 추출 카드가 성공적으로 수정되었습니다.`)
+        alert(`${count}개의 최근 추출 카드가 성공적으로 수정되었습니다. 남는 분류 순서값도 정리했습니다.`)
         setBatchNewTop('')
         setBatchNewSub('')
         setBatchNewPart('')
@@ -576,6 +663,22 @@ export default function ManagePage({ cards }) {
       <div style={S.wideSection}>
         <div style={S.title}>분류 표시 순서 설정</div>
         <div style={S.sub}>학습, 기록형, 관리, X4 내보내기에서 보이는 대분류·과목·단원 순서를 고정합니다. 목록은 각 칸 안에서 스크롤됩니다.</div>
+        <div style={{ background: 'var(--theme-input, #0a0f1e)', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 12, padding: 12, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 220, flex: 1 }}>
+            <div style={{ color: 'var(--theme-text, #e2e8f0)', fontSize: 13, fontWeight: 800 }}>분류 구조 정리</div>
+            <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, lineHeight: 1.5, marginTop: 3 }}>
+              실제 카드에 없는 대분류·과목·단원 순서값을 지웁니다. 현재 잔여값 {classificationResidueCount}개
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" style={{ ...S.btn(false), padding: '9px 12px' }} onClick={handleCleanClassificationOrder}>
+              잔여 분류값 정리
+            </button>
+            <button type="button" style={{ ...S.btn(false), padding: '9px 12px' }} onClick={() => setManageSection('organize')}>
+              폴더 일괄 변경으로 이동
+            </button>
+          </div>
+        </div>
         <div style={S.orderGrid}>
           <OrderList
             title="대분류 순서"
@@ -689,11 +792,29 @@ export default function ManagePage({ cards }) {
             <div style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, lineHeight: 1.55 }}>
               현재 분류: {summarizeLabels(activeBatch?.topCategories, '대분류 없음')} / {summarizeLabels(activeBatch?.subjects, '과목 없음')} / {summarizeLabels(activeBatch?.parts, '단원 없음')} · 대상 {activeBatchCards.length}개
             </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span style={{ color: 'var(--theme-accent, #818cf8)', fontSize: 12, width: 45, fontWeight: 700 }}>변경 후</span>
+            <div style={{ background: 'var(--theme-input, #0a0f1e)', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 10, padding: 12, color: 'var(--theme-textMuted, #94a3b8)', fontSize: 12, lineHeight: 1.55 }}>
+              <div style={{ color: 'var(--theme-text, #e2e8f0)', fontWeight: 800, marginBottom: 4 }}>변경 미리보기</div>
+              <div>{batchTargetPath}</div>
+              <div style={{ color: 'var(--theme-infoText, #7dd3fc)', marginTop: 4 }}>저장 시 예전 분류 순서 찌꺼기도 자동 정리됩니다.</div>
+              {batchPreviewCards.length > 0 && (
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {batchPreviewCards.map((card) => (
+                    <div key={card.id} style={{ color: 'var(--theme-textDim, #64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {cardLine(card)}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
               <DataListInput id="batch-top-dl" value={batchNewTop} onChange={e => setBatchNewTop(e.target.value)} placeholder="새 대분류 (공백 시 유지)" style={S.input} options={safeTopCategories} />
-              <DataListInput id="batch-sub-dl" value={batchNewSub} onChange={e => setBatchNewSub(e.target.value)} placeholder="새 과목명 (공백 시 유지)" style={S.input} options={subjects} />
+              <DataListInput id="batch-sub-dl" value={batchNewSub} onChange={e => setBatchNewSub(e.target.value)} placeholder="새 과목명 (공백 시 유지)" style={S.input} options={batchSubjectOptions} />
               <DataListInput id="batch-part-dl" value={batchNewPart} onChange={e => setBatchNewPart(e.target.value)} placeholder="새 단원명 (공백 시 유지)" style={S.input} options={batchPartOptions} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" style={{ ...S.btn(false), padding: '9px 12px' }} onClick={() => { setBatchNewTop(''); setBatchNewSub(''); setBatchNewPart('') }}>
+                입력 초기화
+              </button>
             </div>
             <button
               style={{ ...S.btn(false), background: canBatchRename ? 'var(--theme-infoSoft, rgba(14,165,233,0.14))' : 'var(--theme-button, #1e293b)', color: canBatchRename ? 'var(--theme-infoText, #7dd3fc)' : 'var(--theme-textDim, #64748b)', border: canBatchRename ? '1px solid var(--theme-info, #38bdf8)' : '1px solid var(--theme-borderStrong, #334155)' }}
@@ -709,10 +830,9 @@ export default function ManagePage({ cards }) {
       {/* 📁 폴더(과목/단원) 이름 일괄 변경 섹션 */}
       <div style={S.wideSection}>
         <div style={S.title}>📁 폴더(대분류/과목/단원) 구조 일괄 변경</div>
-        <div style={S.sub}>기존 카드들의 대분류, 과목명, 단원명을 일괄 수정하여 다른 카테고리로 통합/이동시킵니다.</div>
+        <div style={S.sub}>기존 카드들의 대분류, 과목명, 단원명을 일괄 수정하여 다른 카테고리로 통합/이동시킵니다. 변경 뒤 실제 카드가 없는 분류 순서값은 자동으로 정리됩니다.</div>
         <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ color: 'var(--theme-textDim, #64748b)', fontSize: 12, width: 45 }}>대상 폴더</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
             <select style={{ ...S.select, flex: 1 }} value={editOldTop} onChange={(e) => { setEditOldTop(e.target.value); setEditOldSub('전체'); setEditOldPart('전체'); }}>
               <option>전체</option>{safeTopCategories.map(s => <option key={s}>{s}</option>)}
             </select>
@@ -723,18 +843,57 @@ export default function ManagePage({ cards }) {
               <option>전체</option>{editOptions.map(p => <option key={p}>{p}</option>)}
             </select>
           </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ color: 'var(--theme-accent, #818cf8)', fontSize: 12, width: 45, fontWeight: 700 }}>변경 후</span>
-            <input style={S.input} placeholder="새 대분류 (공백 시 유지)" value={editNewTop} onChange={e => setEditNewTop(e.target.value)} />
-            <input style={S.input} placeholder="새 과목명 (공백 시 유지)" value={editNewSub} onChange={e => setEditNewSub(e.target.value)} />
-            <input style={S.input} placeholder="새 단원명 (공백 시 유지)" value={editNewPart} onChange={e => setEditNewPart(e.target.value)} />
+          <div style={{ background: 'var(--theme-input, #0a0f1e)', border: '1px solid var(--theme-border, #1e293b)', borderRadius: 10, padding: 12, color: 'var(--theme-textMuted, #94a3b8)', fontSize: 12, lineHeight: 1.55 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+              <span style={{ color: 'var(--theme-text, #e2e8f0)', fontWeight: 800 }}>변경 미리보기</span>
+              <span style={S.badge}>대상 {targetEditCount}개</span>
+            </div>
+            <div>{renameSourcePath}</div>
+            <div style={{ color: hasRenameTarget ? 'var(--theme-accentText, #e0e7ff)' : 'var(--theme-textDim, #64748b)', fontWeight: 800 }}>
+              → {hasRenameTarget ? renameTargetPath : '아래에 새 분류명을 입력하면 변경 후 경로가 표시됩니다.'}
+            </div>
+            <div style={{ color: 'var(--theme-infoText, #7dd3fc)', marginTop: 4 }}>저장 시 예전 폴더명, 빈 과목/단원 순서값도 같이 정리됩니다.</div>
+            {editTargetPreview.length > 0 && (
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {editTargetPreview.map((card) => (
+                  <div key={card.id} style={{ color: 'var(--theme-textDim, #64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {cardLine(card)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
+            <DataListInput id="rename-top-dl" value={editNewTop} onChange={e => setEditNewTop(e.target.value)} placeholder="새 대분류 (공백 시 유지)" style={S.input} options={safeTopCategories} />
+            <DataListInput id="rename-sub-dl" value={editNewSub} onChange={e => setEditNewSub(e.target.value)} placeholder="새 과목명 (공백 시 유지)" style={S.input} options={editNewSubjectOptions} />
+            <DataListInput id="rename-part-dl" value={editNewPart} onChange={e => setEditNewPart(e.target.value)} placeholder="새 단원명 (공백 시 유지)" style={S.input} options={editNewPartOptions} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              style={{ ...S.btn(false), padding: '9px 12px' }}
+              onClick={() => {
+                setEditNewTop(editOldTop === '전체' ? '' : editOldTop)
+                setEditNewSub(editOldSub === '전체' ? '' : editOldSub)
+                setEditNewPart(editOldPart === '전체' ? '' : editOldPart)
+              }}
+            >
+              현재값 불러오기
+            </button>
+            <button
+              type="button"
+              style={{ ...S.btn(false), padding: '9px 12px' }}
+              onClick={() => { setEditNewTop(''); setEditNewSub(''); setEditNewPart('') }}
+            >
+              입력 초기화
+            </button>
           </div>
           <button 
-            style={{ ...S.btn(false), background: targetEditCount > 0 ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'var(--theme-button, #1e293b)', color: targetEditCount > 0 ? 'var(--theme-accent, #818cf8)' : 'var(--theme-textDim, #64748b)', border: targetEditCount > 0 ? '1px solid var(--theme-accentStrong, #6366f1)' : '1px solid var(--theme-borderStrong, #334155)' }} 
-            disabled={targetEditCount === 0 || (!editNewTop.trim() && !editNewSub.trim() && !editNewPart.trim())} 
+            style={{ ...S.btn(false), background: canRenameFolder ? 'var(--theme-accentSoft, rgba(99,102,241,0.15))' : 'var(--theme-button, #1e293b)', color: canRenameFolder ? 'var(--theme-accent, #818cf8)' : 'var(--theme-textDim, #64748b)', border: canRenameFolder ? '1px solid var(--theme-accentStrong, #6366f1)' : '1px solid var(--theme-borderStrong, #334155)' }} 
+            disabled={!canRenameFolder} 
             onClick={handleRename}
           >
-            ✏️ 대상 유저 카드 {targetEditCount}개 폴더 구조 변경
+            대상 유저 카드 {targetEditCount}개 폴더 구조 변경
           </button>
         </div>
       </div>

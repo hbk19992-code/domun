@@ -12,6 +12,7 @@ import {
   matchesTopCategory,
   normalizeClassificationOrder,
   partOrderKey,
+  rebuildClassificationOrder,
   sortCardsByClassificationOrder,
   sortLabelsByOrder,
   subjectOrderKey
@@ -206,8 +207,7 @@ export function useCards() {
       try {
         await setDoc(
           doc(db, 'users', currentUid, 'meta', 'classificationOrder'),
-          { ...normalized, updatedAt: new Date().toISOString() },
-          { merge: true }
+          { ...normalized, updatedAt: new Date().toISOString() }
         );
       } catch (err) {
         console.error("분류 순서 저장 실패:", err);
@@ -218,11 +218,16 @@ export function useCards() {
     }
   }, []);
 
-  const commitOps = useCallback(async (nextCards, buildBatchFunc) => {
+  const commitOps = useCallback(async (nextCards, buildBatchFunc, nextOrder = null) => {
+    const normalizedOrder = nextOrder ? normalizeClassificationOrder(nextOrder) : null;
     const currentUid = uidRef.current;
     if (!currentUid) {
       setUserCards(nextCards);
       writeCardsCache('mnemonic_user_cards', nextCards);
+      if (normalizedOrder) {
+        setClassificationOrder(normalizedOrder);
+        writeClassificationOrderCache('classification_order_local', normalizedOrder);
+      }
       return;
     }
 
@@ -230,6 +235,10 @@ export function useCards() {
     localRevRef.current = newRev;
     setUserCards(nextCards);
     writeCardsCache(CACHE_KEY(currentUid), nextCards);
+    if (normalizedOrder) {
+      setClassificationOrder(normalizedOrder);
+      writeClassificationOrderCache(ORDER_KEY(currentUid), normalizedOrder);
+    }
     localStorage.setItem(REV_KEY(currentUid), newRev);
 
     const ops = buildBatchFunc();
@@ -247,6 +256,10 @@ export function useCards() {
       if (i + CHUNK_SIZE >= ops.length) {
         const metaRef = doc(db, 'users', currentUid, 'meta', 'cards');
         batch.set(metaRef, { rev: newRev }, { merge: true });
+        if (normalizedOrder) {
+          const orderRef = doc(db, 'users', currentUid, 'meta', 'classificationOrder');
+          batch.set(orderRef, { ...normalizedOrder, updatedAt: new Date().toISOString() });
+        }
       }
       
       await batch.commit();
@@ -273,11 +286,12 @@ export function useCards() {
     const docRef = doc(collection(db, 'dummy')); 
     const newCard = { ...card, id: docRef.id };
     const nextCards = [...userCards, newCard];
+    const nextOrder = rebuildClassificationOrder(nextCards, classificationOrder);
     
     await commitOps(nextCards, () => [
       { type: 'set', ref: doc(db, 'users', uidRef.current, 'cards', newCard.id), data: newCard }
-    ]);
-  }, [userCards, commitOps]);
+    ], nextOrder);
+  }, [userCards, classificationOrder, commitOps]);
 
   const addCards = useCallback(async (incoming) => {
     if (!uidRef.current) return { added: 0, updated: 0 };
@@ -308,6 +322,7 @@ export function useCards() {
       ...userCards.map((card) => topCategoryUpdates.get(card.id) || card),
       ...cardsToAdd
     ];
+    const nextOrder = rebuildClassificationOrder(nextCards, classificationOrder);
 
     await commitOps(nextCards, () => [
       ...Array.from(topCategoryUpdates.values()).map(card => ({
@@ -319,18 +334,19 @@ export function useCards() {
       ...cardsToAdd.map(card => ({
         type: 'set', ref: doc(db, 'users', uidRef.current, 'cards', card.id), data: card
       }))
-    ]);
+    ], nextOrder);
     return { added: cardsToAdd.length, updated: topCategoryUpdates.size };
-  }, [userCards, commitOps]);
+  }, [userCards, classificationOrder, commitOps]);
 
   const updateCard = useCallback(async (id, updated) => {
     if (!uidRef.current || !id) return;
     const nextCards = userCards.map(c => c.id === id ? { ...c, ...updated } : c);
+    const nextOrder = rebuildClassificationOrder(nextCards, classificationOrder);
     
     await commitOps(nextCards, () => [
       { type: 'set', ref: doc(db, 'users', uidRef.current, 'cards', id), data: updated, options: { merge: true } }
-    ]);
-  }, [userCards, commitOps]);
+    ], nextOrder);
+  }, [userCards, classificationOrder, commitOps]);
 
   const updateCardsByIds = useCallback(async (ids, updates) => {
     if (!uidRef.current || !Array.isArray(ids) || ids.length === 0) return 0;
@@ -349,6 +365,7 @@ export function useCards() {
     });
 
     if (updatedCards.length === 0) return 0;
+    const nextOrder = rebuildClassificationOrder(nextCards, classificationOrder);
 
     await commitOps(nextCards, () =>
       updatedCards.map(card => ({
@@ -357,18 +374,19 @@ export function useCards() {
         data: patch,
         options: { merge: true }
       }))
-    );
+    , nextOrder);
     return updatedCards.length;
-  }, [userCards, commitOps]);
+  }, [userCards, classificationOrder, commitOps]);
 
   const deleteCard = useCallback(async (id) => {
     if (!uidRef.current || !id) return;
     const nextCards = userCards.filter(c => c.id !== id);
+    const nextOrder = rebuildClassificationOrder(nextCards, classificationOrder);
     
     await commitOps(nextCards, () => [
       { type: 'delete', ref: doc(db, 'users', uidRef.current, 'cards', id) }
-    ]);
-  }, [userCards, commitOps]);
+    ], nextOrder);
+  }, [userCards, classificationOrder, commitOps]);
 
   const deleteBy = useCallback(async ({ topCategory, subject, part }) => {
     if (!uidRef.current) return 0;
@@ -387,14 +405,15 @@ export function useCards() {
 
     if (removed === 0) return 0;
     const nextCards = userCards.filter(c => !toDeleteIds.has(c.id));
+    const nextOrder = rebuildClassificationOrder(nextCards, classificationOrder);
     
     await commitOps(nextCards, () => 
       Array.from(toDeleteIds).map(id => ({
         type: 'delete', ref: doc(db, 'users', uidRef.current, 'cards', id)
       }))
-    );
+    , nextOrder);
     return removed;
-  }, [userCards, commitOps]);
+  }, [userCards, classificationOrder, commitOps]);
 
   const countBy = useCallback(({ topCategory, subject, part }) =>
     userCards.filter((c) => {
@@ -429,6 +448,7 @@ export function useCards() {
     });
 
     if (updatedCount > 0) {
+      const nextOrder = rebuildClassificationOrder(nextCards, classificationOrder);
       await commitOps(nextCards, () => 
         updates.map(card => ({
           type: 'set',
@@ -436,10 +456,10 @@ export function useCards() {
           data: { topCategory: card.topCategory, subject: card.subject, part: card.part },
           options: { merge: true }
         }))
-      );
+      , nextOrder);
     }
     return updatedCount;
-  }, [userCards, commitOps]);
+  }, [userCards, classificationOrder, commitOps]);
 
   const deduplicateSelf = useCallback(async () => {
     if (!uidRef.current) return 0;
@@ -460,14 +480,15 @@ export function useCards() {
     });
     
     if (removed > 0) {
+      const nextOrder = rebuildClassificationOrder(kept, classificationOrder);
       await commitOps(kept, () => 
         toDeleteIds.map(id => ({
           type: 'delete', ref: doc(db, 'users', uidRef.current, 'cards', id)
         }))
-      );
+      , nextOrder);
     }
     return removed;
-  }, [userCards, commitOps]);
+  }, [userCards, classificationOrder, commitOps]);
 
   const exportJSON = useCallback(() => {
     const blob = new Blob([JSON.stringify(allCards, null, 2)], { type: 'application/json' });
