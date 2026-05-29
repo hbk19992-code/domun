@@ -167,8 +167,18 @@ function emptyClassificationItems(order, cleanedOrder) {
   const cleaned = normalizeClassificationOrder(cleanedOrder)
   const items = []
   const cleanedTopSet = new Set(cleaned.topCategories)
+  const currentTopLabels = new Set(current.topCategories)
 
-  current.topCategories.forEach((label) => {
+  Object.keys(current.subjects).forEach((key) => {
+    if (key !== GLOBAL_ORDER_KEY) currentTopLabels.add(key)
+  })
+
+  Object.keys(current.parts).forEach((key) => {
+    const [topKey] = key.split('\u0000')
+    if (topKey && topKey !== GLOBAL_ORDER_KEY) currentTopLabels.add(topKey)
+  })
+
+  currentTopLabels.forEach((label) => {
     if (!cleanedTopSet.has(label)) {
       items.push({ type: 'top', key: label, label, path: label, title: '빈 대분류' })
     }
@@ -343,9 +353,13 @@ export default function ManagePage({ cards }) {
   const [manageSection, setManageSection] = useState('cards')
 
   // ── 옵션 메모이제이션 ──
-  const safeTopCategories = useMemo(
-    () => [...new Set([DEFAULT_TOP_CATEGORY, ...(Array.isArray(topCategories) ? topCategories : [])].filter(Boolean))],
+  const actualTopCategories = useMemo(
+    () => [...new Set((Array.isArray(topCategories) ? topCategories : []).filter(Boolean))],
     [topCategories]
+  )
+  const safeTopCategories = useMemo(
+    () => [...new Set([DEFAULT_TOP_CATEGORY, ...actualTopCategories].filter(Boolean))],
+    [actualTopCategories]
   )
 
   const safeClassificationOrder = useMemo(
@@ -529,8 +543,8 @@ export default function ManagePage({ cards }) {
   }, [activeBatchCards, batchNewTop, batchNewSub, parts])
 
   const orderTopItems = useMemo(
-    () => mergeOrder(safeClassificationOrder.topCategories, safeTopCategories),
-    [safeClassificationOrder, safeTopCategories]
+    () => mergeOrder(safeClassificationOrder.topCategories, actualTopCategories),
+    [safeClassificationOrder, actualTopCategories]
   )
   const orderSubjectItems = useMemo(() => {
     const key = subjectOrderKey(orderSubjectTop)
@@ -812,7 +826,7 @@ export default function ManagePage({ cards }) {
         <div style={S.orderGrid}>
           <OrderList
             title="대분류 순서"
-            sub="전체 화면의 가장 바깥 분류 순서입니다."
+            sub="카드가 실제로 들어 있는 대분류만 표시합니다. 빈 대분류는 위 목록에서 삭제합니다."
             items={orderTopItems}
             onChange={saveTopOrder}
           />
