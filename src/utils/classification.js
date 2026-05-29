@@ -1,6 +1,7 @@
 export const DEFAULT_TOP_CATEGORY = '기본'
 export const GLOBAL_ORDER_KEY = '__all__'
-const PART_KEY_SEPARATOR = '\u0000'
+const LEGACY_PART_KEY_SEPARATOR = '\u0000'
+const PART_KEY_SEPARATOR = '::domun-part::'
 
 export function cleanLabel(value, fallback = '') {
   const text = String(value ?? '').trim()
@@ -47,14 +48,63 @@ export function partOrderKey(topCategory = GLOBAL_ORDER_KEY, subject = '') {
   return `${subjectOrderKey(topCategory)}${PART_KEY_SEPARATOR}${cleanLabel(subject)}`
 }
 
+export function splitPartOrderKey(key = '') {
+  const text = String(key || '')
+  const separator = text.includes(PART_KEY_SEPARATOR) ? PART_KEY_SEPARATOR : LEGACY_PART_KEY_SEPARATOR
+  const [topCategory = GLOBAL_ORDER_KEY, ...subjectParts] = text.split(separator)
+  return [cleanLabel(topCategory, GLOBAL_ORDER_KEY), subjectParts.join(separator)]
+}
+
+function normalizePartMapKey(key) {
+  const [topCategory, subject] = splitPartOrderKey(key)
+  return partOrderKey(topCategory, subject)
+}
+
+function entriesToOrderMap(entries = []) {
+  if (!Array.isArray(entries)) return {}
+  return Object.fromEntries(entries
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => [cleanLabel(entry.key), uniqueLabels(entry.values)])
+    .filter(([key, values]) => key && values.length > 0)
+  )
+}
+
+function normalizeOrderMap(value = {}, normalizeKey = (key) => cleanLabel(key)) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  return Object.fromEntries(Object.entries(source)
+    .map(([key, labels]) => [normalizeKey(key), uniqueLabels(labels)])
+    .filter(([key, labels]) => key && labels.length > 0)
+  )
+}
+
 export function normalizeClassificationOrder(order = {}) {
-  const subjects = order?.subjects && typeof order.subjects === 'object' ? order.subjects : {}
-  const parts = order?.parts && typeof order.parts === 'object' ? order.parts : {}
+  const subjects = order?.subjectsEntries ? entriesToOrderMap(order.subjectsEntries) : order?.subjects
+  const parts = order?.partsEntries ? entriesToOrderMap(order.partsEntries) : order?.parts
   return {
     topCategories: uniqueLabels(order?.topCategories),
-    subjects: Object.fromEntries(Object.entries(subjects).map(([key, value]) => [key, uniqueLabels(value)])),
-    parts: Object.fromEntries(Object.entries(parts).map(([key, value]) => [key, uniqueLabels(value)])),
+    subjects: normalizeOrderMap(subjects),
+    parts: normalizeOrderMap(parts, normalizePartMapKey),
   }
+}
+
+function orderMapToEntries(map = {}) {
+  return Object.entries(map)
+    .map(([key, values]) => ({ key, values: uniqueLabels(values) }))
+    .filter((entry) => cleanLabel(entry.key) && entry.values.length > 0)
+}
+
+export function serializeClassificationOrderForStorage(order = {}) {
+  const normalized = normalizeClassificationOrder(order)
+  return {
+    schemaVersion: 2,
+    topCategories: normalized.topCategories,
+    subjectsEntries: orderMapToEntries(normalized.subjects),
+    partsEntries: orderMapToEntries(normalized.parts),
+  }
+}
+
+export function isStoredClassificationOrderPayload(value = {}) {
+  return !!(value && typeof value === 'object' && (value.subjectsEntries || value.partsEntries))
 }
 
 function addLabelToMap(map, key, label) {

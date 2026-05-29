@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { answerLabel, answerPlaceholder, cardKindLabel, getCardKind, isAnswerCard } from '../utils/cardType'
-import { DEFAULT_TOP_CATEGORY, GLOBAL_ORDER_KEY, getTopCategory, matchesTopCategory, normalizeClassificationOrder, partOrderKey, rebuildClassificationOrder, subjectOrderKey, sortLabelsByOrder } from '../utils/classification'
+import { DEFAULT_TOP_CATEGORY, GLOBAL_ORDER_KEY, getTopCategory, matchesTopCategory, normalizeClassificationOrder, partOrderKey, rebuildClassificationOrder, splitPartOrderKey, subjectOrderKey, sortLabelsByOrder } from '../utils/classification'
 import { ThemePickerCard } from './ThemePicker'
 
 const S = {
@@ -174,7 +174,7 @@ function emptyClassificationItems(order, cleanedOrder) {
   })
 
   Object.keys(current.parts).forEach((key) => {
-    const [topKey] = key.split('\u0000')
+    const [topKey] = splitPartOrderKey(key)
     if (topKey && topKey !== GLOBAL_ORDER_KEY) currentTopLabels.add(topKey)
   })
 
@@ -194,7 +194,7 @@ function emptyClassificationItems(order, cleanedOrder) {
   })
 
   Object.entries(current.parts).forEach(([key, list]) => {
-    const [topKey, subject = ''] = key.split('\u0000')
+    const [topKey, subject = ''] = splitPartOrderKey(key)
     const cleanedSet = new Set(cleaned.parts[key] || [])
     list.forEach((label) => {
       if (!cleanedSet.has(label)) {
@@ -216,7 +216,7 @@ function removeEmptyClassificationItem(order, item) {
       Object.entries(normalized.subjects).filter(([key]) => key !== top)
     )
     const parts = Object.fromEntries(
-      Object.entries(normalized.parts).filter(([key]) => !key.startsWith(`${top}\u0000`))
+      Object.entries(normalized.parts).filter(([key]) => splitPartOrderKey(key)[0] !== top)
     )
     return {
       topCategories: normalized.topCategories.filter((label) => label !== top),
@@ -235,7 +235,7 @@ function removeEmptyClassificationItem(order, item) {
     if (subjects[topKey].length === 0) delete subjects[topKey]
 
     const parts = Object.fromEntries(
-      Object.entries(normalized.parts).filter(([key]) => key !== `${topKey}\u0000${subject}`)
+      Object.entries(normalized.parts).filter(([key]) => key !== partOrderKey(topKey, subject))
     )
     return { ...normalized, subjects, parts }
   }
@@ -357,6 +357,13 @@ export default function ManagePage({ cards }) {
     () => [...new Set((Array.isArray(topCategories) ? topCategories : []).filter(Boolean))],
     [topCategories]
   )
+  const topCategoryCounts = useMemo(() => {
+    return userCards.reduce((acc, card) => {
+      const top = getTopCategory(card)
+      acc[top] = (acc[top] || 0) + 1
+      return acc
+    }, {})
+  }, [userCards])
   const safeTopCategories = useMemo(
     () => [...new Set([DEFAULT_TOP_CATEGORY, ...actualTopCategories].filter(Boolean))],
     [actualTopCategories]
@@ -382,6 +389,39 @@ export default function ManagePage({ cards }) {
     () => emptyClassifications.slice(0, 12),
     [emptyClassifications]
   )
+  const renderTopOption = (value) => (
+    <option key={value} value={value}>{value} ({topCategoryCounts[value] || 0}개)</option>
+  )
+
+  useEffect(() => {
+    const hasTop = (value) => value === '전체' || actualTopCategories.includes(value)
+
+    if (!hasTop(delTop)) {
+      setDelTop('전체')
+      setDelSub('전체')
+      setDelPart('전체')
+    }
+    if (!hasTop(editOldTop)) {
+      setEditOldTop('전체')
+      setEditOldSub('전체')
+      setEditOldPart('전체')
+    }
+    if (!hasTop(listTop)) {
+      setListTop('전체')
+      setListSub('전체')
+      setListPart('전체')
+    }
+    if (!hasTop(x4Top)) {
+      setX4Top('전체')
+      setX4Sub('전체')
+      setX4Part('전체')
+    }
+    if (!hasTop(orderSubjectTop)) setOrderSubjectTop('전체')
+    if (!hasTop(orderPartTop)) {
+      setOrderPartTop('전체')
+      setOrderPartSubject('')
+    }
+  }, [actualTopCategories, delTop, editOldTop, listTop, x4Top, orderSubjectTop, orderPartTop])
 
   const getSubjectOptions = (topCategory) => {
     if (typeof subjectsForTop === 'function') return subjectsForTop(topCategory)
@@ -594,13 +634,13 @@ export default function ManagePage({ cards }) {
 
     if (!window.confirm(message)) return
     Promise.resolve(saveClassificationOrder(cleanedClassificationOrder))
-      .then(() => alert(classificationResidueCount > 0 ? '남아 있던 분류 순서값을 정리했습니다.' : '분류 순서를 현재 카드 기준으로 다시 저장했습니다.'))
+      .then((ok) => alert(ok === false ? '분류 정리를 서버에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.' : (classificationResidueCount > 0 ? '남아 있던 분류 순서값을 정리했습니다.' : '분류 순서를 현재 카드 기준으로 다시 저장했습니다.')))
   }
   const handleDeleteEmptyClassification = (item) => {
     if (typeof saveClassificationOrder !== 'function' || !item) return
     if (!window.confirm(`[${item.title}] ${item.path}\n\n이 빈 분류를 삭제합니다. 카드 내용은 삭제되지 않습니다.`)) return
     Promise.resolve(saveClassificationOrder(removeEmptyClassificationItem(safeClassificationOrder, item)))
-      .then(() => alert('빈 분류를 삭제했습니다.'))
+      .then((ok) => alert(ok === false ? '빈 분류 삭제를 서버에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.' : '빈 분류를 삭제했습니다.'))
   }
 
   // 필터링된 실시간 유저 카드 목록 계산
@@ -833,7 +873,7 @@ export default function ManagePage({ cards }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', gap: 6 }}>
               <select style={{ ...S.select, flex: 1 }} value={orderSubjectTop} onChange={(e) => setOrderSubjectTop(e.target.value)}>
-                <option>전체</option>{safeTopCategories.map((value) => <option key={value}>{value}</option>)}
+                <option>전체</option>{actualTopCategories.map(renderTopOption)}
               </select>
             </div>
             <OrderList
@@ -846,7 +886,7 @@ export default function ManagePage({ cards }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', gap: 6 }}>
               <select style={{ ...S.select, flex: 1 }} value={orderPartTop} onChange={(e) => { setOrderPartTop(e.target.value); setOrderPartSubject('') }}>
-                <option>전체</option>{safeTopCategories.map((value) => <option key={value}>{value}</option>)}
+                <option>전체</option>{actualTopCategories.map(renderTopOption)}
               </select>
               <select style={{ ...S.select, flex: 1 }} value={activeOrderPartSubject} onChange={(e) => setOrderPartSubject(e.target.value)}>
                 {orderPartSubjectOptions.length === 0 && <option value="">과목 없음</option>}
@@ -978,7 +1018,7 @@ export default function ManagePage({ cards }) {
         <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
             <select style={{ ...S.select, flex: 1 }} value={editOldTop} onChange={(e) => { setEditOldTop(e.target.value); setEditOldSub('전체'); setEditOldPart('전체'); }}>
-              <option>전체</option>{safeTopCategories.map(s => <option key={s}>{s}</option>)}
+              <option>전체</option>{actualTopCategories.map(renderTopOption)}
             </select>
             <select style={{ ...S.select, flex: 1 }} value={editOldSub} onChange={(e) => { setEditOldSub(e.target.value); setEditOldPart('전체'); }}>
               <option>전체</option>{editSubjectOptions.map(s => <option key={s}>{s}</option>)}
@@ -1054,7 +1094,7 @@ export default function ManagePage({ cards }) {
         {/* 필터 제어 필드 */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
           <select style={{ ...S.select, flex: 1 }} value={listTop} onChange={(e) => { setListTop(e.target.value); setListSub('전체'); setListPart('전체'); }}>
-            <option value="전체">전체 대분류</option>{safeTopCategories.map(s => <option key={s}>{s}</option>)}
+            <option value="전체">전체 대분류</option>{actualTopCategories.map(renderTopOption)}
           </select>
           <select style={{ ...S.select, flex: 1 }} value={listSub} onChange={(e) => { setListSub(e.target.value); setListPart('전체'); }}>
             <option value="전체">전체 과목</option>{listSubjectOptions.map(s => <option key={s}>{s}</option>)}
@@ -1149,7 +1189,7 @@ export default function ManagePage({ cards }) {
         <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
           <select style={{ ...S.select, flex: 1, minWidth: 120 }} value={x4Top}
             onChange={(e) => { setX4Top(e.target.value); setX4Sub('전체'); setX4Part('전체') }}>
-            <option>전체</option>{safeTopCategories.map(s => <option key={s}>{s}</option>)}
+            <option>전체</option>{actualTopCategories.map(renderTopOption)}
           </select>
           <select style={{ ...S.select, flex: 1, minWidth: 120 }} value={x4Sub}
             onChange={(e) => { setX4Sub(e.target.value); setX4Part('전체') }}>
@@ -1203,7 +1243,7 @@ export default function ManagePage({ cards }) {
         <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
           <div style={{ display: 'flex', gap: 6 }}>
             <select style={{ ...S.select, flex: 1 }} value={delTop} onChange={(e) => { setDelTop(e.target.value); setDelSub('전체'); setDelPart('전체'); }}>
-              <option>전체</option>{safeTopCategories.map(s => <option key={s}>{s}</option>)}
+              <option>전체</option>{actualTopCategories.map(renderTopOption)}
             </select>
             <select style={{ ...S.select, flex: 1 }} value={delSub} onChange={(e) => { setDelSub(e.target.value); setDelPart('전체'); }}>
               <option>전체</option>{delSubjectOptions.map(s => <option key={s}>{s}</option>)}

@@ -13,6 +13,7 @@ import {
   normalizeClassificationOrder,
   partOrderKey,
   rebuildClassificationOrder,
+  serializeClassificationOrderForStorage,
   sortCardsByClassificationOrder,
   sortLabelsByOrder,
   subjectOrderKey
@@ -207,14 +208,17 @@ export function useCards() {
       try {
         await setDoc(
           doc(db, 'users', currentUid, 'meta', 'classificationOrder'),
-          { ...normalized, updatedAt: new Date().toISOString() }
+          { ...serializeClassificationOrderForStorage(normalized), updatedAt: new Date().toISOString() }
         );
+        return true;
       } catch (err) {
         console.error("분류 순서 저장 실패:", err);
         setSyncError('분류 순서 저장이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
+        return false;
       }
     } else {
       writeClassificationOrderCache('classification_order_local', normalized);
+      return true;
     }
   }, []);
 
@@ -258,7 +262,7 @@ export function useCards() {
         batch.set(metaRef, { rev: newRev }, { merge: true });
         if (normalizedOrder) {
           const orderRef = doc(db, 'users', currentUid, 'meta', 'classificationOrder');
-          batch.set(orderRef, { ...normalizedOrder, updatedAt: new Date().toISOString() });
+          batch.set(orderRef, { ...serializeClassificationOrderForStorage(normalizedOrder), updatedAt: new Date().toISOString() });
         }
       }
       
